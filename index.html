@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PT Papa Tango QC Monitor (Final)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen pb-20" x-data="qcApp()">
+
+    <div x-show="showSettings" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm" @click="showSettings = false"></div>
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg z-10 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 bg-slate-800 text-white flex justify-between items-center">
+                <h2 class="font-bold text-lg">⚙️ 오늘 리포트 설정 (Daily Setup)</h2>
+                <button @click="showSettings = false" class="text-slate-400 hover:text-white">✕ 닫기</button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1">
+                <p class="text-xs text-slate-500 mb-4">오늘 생산 일정에 없는 리포트는 체크를 해제(OFF)하세요. 목록에서 사라집니다.</p>
+                <div class="space-y-2">
+                    <template x-for="item in reports" :key="item.id">
+                        <div class="flex items-center justify-between p-3 border rounded hover:bg-slate-50">
+                            <div>
+                                <span class="text-xs font-bold px-2 py-0.5 rounded text-white" 
+                                      :class="item.category === '30min' ? 'bg-red-400' : (item.category === '1hour' ? 'bg-blue-400' : 'bg-green-400')"
+                                      x-text="item.code"></span>
+                                <span class="text-sm font-bold text-slate-700 ml-2" x-text="item.name"></span>
+                            </div>
+                            <button @click="toggleActive(item.id)" 
+                                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+                                    :class="isActive(item.id) ? 'bg-indigo-600' : 'bg-slate-200'">
+                                <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200"
+                                      :class="isActive(item.id) ? 'translate-x-6' : 'translate-x-1'"></span>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            <div class="p-4 border-t bg-slate-50 text-right">
+                <button @click="showSettings = false" class="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700">설정 완료</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-indigo-900 text-white shadow-lg sticky top-0 z-40">
+        <div class="max-w-4xl mx-auto px-4 py-4">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h1 class="text-xl font-bold flex items-center gap-2">🏭 QC 모니터링</h1>
+                    <p class="text-indigo-300 text-xs mt-1" x-text="today"></p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button @click="showSettings = true" class="p-2 bg-indigo-800 rounded-lg hover:bg-indigo-700 text-indigo-200 transition-colors">
+                        ⚙️ 설정
+                    </button>
+                    <div class="text-right">
+                        <span class="text-2xl font-bold text-yellow-400" x-text="progress + '%'"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 bg-indigo-800 p-3 rounded-lg">
+                <div>
+                    <label class="block text-[10px] text-indigo-300 mb-1">Shift (근무조)</label>
+                    <select x-model="currentShift" @change="loadData()" class="w-full bg-indigo-700 text-white text-sm rounded border-none focus:ring-1 focus:ring-yellow-400 p-2">
+                        <option value="Shift 1">Shift 1 (Pagi)</option>
+                        <option value="Shift 2">Shift 2 (Sore)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] text-indigo-300 mb-1">Pelapor (담당자)</label>
+                    <input type="text" x-model="qcName" @input="saveData()" placeholder="이름 입력" class="w-full bg-indigo-700 text-white text-sm rounded border-none focus:ring-1 focus:ring-yellow-400 p-2 placeholder-indigo-400">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto px-4 mt-6 space-y-8">
+
+        <div x-show="groupedReports['30min'].length > 0">
+            <div class="flex items-center gap-2 mb-3 px-2">
+                <span class="bg-red-100 text-red-600 p-1 rounded-md text-lg">⚡</span>
+                <h2 class="font-bold text-slate-700 text-lg">30분 단위 (Update 30 Menit)</h2>
+            </div>
+            <div class="space-y-4">
+                <template x-for="item in groupedReports['30min']" :key="item.id">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-4 border-b border-slate-100 bg-red-50 flex justify-between items-start">
+                            <div>
+                                <span class="text-[10px] font-bold text-red-500 bg-white border border-red-200 px-2 py-0.5 rounded-full" x-text="item.code"></span>
+                                <h3 class="font-bold text-slate-800 mt-1" x-text="item.name"></h3>
+                                <p class="text-xs text-slate-500 mt-1" x-text="item.desc"></p>
+                            </div>
+                            <span class="text-xs font-mono text-slate-400" x-text="getCheckedCount(item.id) + '/' + item.totalCount"></span>
+                        </div>
+                        <div class="p-3 bg-white overflow-x-auto no-scrollbar">
+                            <div class="flex gap-2 min-w-max">
+                                <template x-for="i in item.totalCount">
+                                    <button @click="toggleCheck(item.id, i-1)"
+                                        :class="getSlotStatus(item.id, i-1) ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-300 border-slate-200 hover:border-red-300'"
+                                        class="w-10 h-10 rounded border flex flex-col items-center justify-center transition-all">
+                                        <span class="text-[10px] font-bold" x-text="getSlotStatus(item.id, i-1) ? 'OK' : i"></span>
+                                        <span class="text-[8px]" x-show="getSlotStatus(item.id, i-1)" x-text="getSlotTime(item.id, i-1)"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div x-show="groupedReports['1hour'].length > 0">
+            <div class="flex items-center gap-2 mb-3 px-2 pt-4 border-t border-slate-200">
+                <span class="bg-blue-100 text-blue-600 p-1 rounded-md text-lg">⏰</span>
+                <h2 class="font-bold text-slate-700 text-lg">1시간 단위 (Update 1 Jam)</h2>
+            </div>
+            <div class="space-y-4">
+                <template x-for="item in groupedReports['1hour']" :key="item.id">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-4 border-b border-slate-100 flex justify-between items-start">
+                            <div>
+                                <span class="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full" x-text="item.code"></span>
+                                <h3 class="font-bold text-slate-800 mt-1" x-text="item.name"></h3>
+                                <p class="text-xs text-slate-500 mt-1" x-text="item.desc"></p>
+                            </div>
+                            <span class="text-xs font-mono text-slate-400" x-text="getCheckedCount(item.id) + '/' + item.totalCount"></span>
+                        </div>
+                        <div class="p-3 bg-white overflow-x-auto no-scrollbar">
+                            <div class="flex gap-2 min-w-max">
+                                <template x-for="i in item.totalCount">
+                                    <button @click="toggleCheck(item.id, i-1)"
+                                        :class="getSlotStatus(item.id, i-1) ? 'bg-blue-500 text-white border-blue-600' : 'bg-white text-slate-300 border-slate-200 hover:border-blue-300'"
+                                        class="w-10 h-10 rounded border flex flex-col items-center justify-center transition-all">
+                                        <span class="text-[10px] font-bold" x-text="getSlotStatus(item.id, i-1) ? 'OK' : i"></span>
+                                        <span class="text-[8px]" x-show="getSlotStatus(item.id, i-1)" x-text="getSlotTime(item.id, i-1)"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div x-show="groupedReports['shift'].length > 0">
+            <div class="flex items-center gap-2 mb-3 px-2 pt-4 border-t border-slate-200">
+                <span class="bg-green-100 text-green-600 p-1 rounded-md text-lg">📅</span>
+                <h2 class="font-bold text-slate-700 text-lg">시프트 업무 (Shift Routine)</h2>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <template x-for="item in groupedReports['shift']" :key="item.id">
+                    <div :class="isCompleted(item) ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'" class="rounded-xl shadow-sm border p-4 transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full" x-text="item.code"></span>
+                                <h3 class="font-bold text-slate-800 mt-1 text-sm" x-text="item.name"></h3>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                             <template x-for="i in item.totalCount">
+                                <button @click="toggleCheck(item.id, i-1)"
+                                    :class="getSlotStatus(item.id, i-1) ? 'bg-green-500 text-white' : 'bg-white border border-slate-300 text-slate-400'"
+                                    class="flex-1 py-2 rounded text-xs font-bold transition-all flex items-center justify-center gap-1">
+                                    <span x-text="getSlotStatus(item.id, i-1) ? '완료' : (item.labels ? item.labels[i-1] : 'Check ' + i)"></span>
+                                    <span x-show="getSlotStatus(item.id, i-1)" class="text-[9px] font-normal opacity-80" x-text="'('+getSlotTime(item.id, i-1)+')'"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="h-10"></div>
+        <div class="text-center pb-8">
+            <button @click="resetData()" class="text-xs text-slate-400 underline hover:text-red-500">
+                ⚠️ 모든 데이터 초기화 (Reset)
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        function qcApp() {
+            return {
+                today: new Date().toLocaleDateString('ko-KR'),
+                currentShift: 'Shift 1',
+                qcName: '',
+                showSettings: false, // 설정 모달창 제어
+
+                reports: [
+                    // [30분]
+                    { id: 'A-4', code: 'A-4', category: '30min', name: 'Laporan QC di Tablet', desc: 'Kebersihan, Kontaminan', totalCount: 16 },
+                    { id: 'A-5', code: 'A-5', category: '30min', name: 'Status Tes Steam', desc: 'Max jam 13.00 update', totalCount: 10 },
+                    { id: 'B-3', code: 'B-3', category: '30min', name: 'Laporan Situasi Kupas', desc: 'Koordinasi TL', totalCount: 16 },
+                    { id: 'B-4', code: 'B-4', category: '30min', name: 'Laporan Situasi Packing', desc: 'Koordinasi TL', totalCount: 16 },
+                    { id: 'B-5', code: 'B-5', category: '30min', name: 'Hasil Per Jam', desc: 'Sesuai produk', totalCount: 16 },
+                    { id: 'B-9', code: 'B-9', category: '30min', name: 'Laporan Kondisi BB', desc: 'Kualitas BB update', totalCount: 16 },
+                    // [1시간]
+                    { id: 'A-8', code: 'A-8', category: '1hour', name: 'Status Barang Jatuh', desc: 'Kupas, Packing, Steam, Dry', totalCount: 8 },
+                    { id: 'B-2', code: 'B-2', category: '1hour', name: 'Laporan Status Steam', desc: 'Laporan sesuai & benar', totalCount: 8 },
+                    { id: 'B-6', code: 'B-6', category: '1hour', name: 'Laporan Giling', desc: 'Saat produksi', totalCount: 8 },
+                    { id: 'B-7', code: 'B-7', category: '1hour', name: 'Laporan Giling (Steril)', desc: 'Barang butuh steril', totalCount: 8 },
+                    { id: 'B-8', code: 'B-8', category: '1hour', name: 'Laporan Potong', desc: 'Setting mesin & nata', totalCount: 8 },
+                    { id: 'B-10', code: 'B-10', category: '1hour', name: 'Laporan Dry', desc: 'Status mesin 2x', totalCount: 8 },
+                    // [시프트]
+                    { id: 'A-1', code: 'A-1', category: 'shift', name: 'Cek Stok BB Steam', desc: 'Awal & Istirahat', totalCount: 2, labels: ['Awal', 'Istirahat'] },
+                    { id: 'A-2', code: 'A-2', category: 'shift', name: 'Cek Stok BS (Defros)', desc: 'Cek Defros', totalCount: 2, labels: ['Cek 1', 'Cek 2'] },
+                    { id: 'A-3', code: 'A-3', category: 'shift', name: 'Handover IN', desc: 'Dari shift lalu', totalCount: 1, labels: ['Handover'] },
+                    { id: 'A-6', code: 'A-6', category: 'shift', name: 'List BB Butuh Kirim', desc: 'Jam 12 & Pulang', totalCount: 2, labels: ['Jam 12', 'Pulang'] },
+                    { id: 'A-7', code: 'A-7', category: 'shift', name: 'Handover & Rencana', desc: 'Ke shift depan', totalCount: 1, labels: ['Handover'] },
+                    { id: 'A-9', code: 'A-9', category: 'shift', name: 'Sisa Barang (Closing)', desc: 'Cek sisa', totalCount: 1, labels: ['Closing'] },
+                    { id: 'B-1', code: 'B-1', category: 'shift', name: 'Cek Laporan Absensi', desc: 'Awal & Istirahat', totalCount: 2, labels: ['Awal', 'Istirahat'] },
+                ],
+                
+                statusData: {}, 
+                activeConfig: {}, // ON/OFF 설정 저장소
+
+                get activeReportsList() {
+                    // 설정에서 켜진(ON) 애들만 필터링
+                    return this.reports.filter(r => this.isActive(r.id));
+                },
+
+                get groupedReports() {
+                    const list = this.activeReportsList;
+                    return {
+                        '30min': list.filter(r => r.category === '30min'),
+                        '1hour': list.filter(r => r.category === '1hour'),
+                        'shift': list.filter(r => r.category === 'shift')
+                    };
+                },
+
+                get progress() {
+                    const list = this.activeReportsList; // 활성화된 것만 계산 포함
+                    let total = 0;
+                    let checked = 0;
+                    list.forEach(r => {
+                        total += r.totalCount;
+                        checked += this.getCheckedCount(r.id);
+                    });
+                    return total === 0 ? 0 : Math.round((checked / total) * 100);
+                },
+
+                init() {
+                    this.loadData();
+                },
+
+                // --- 설정(Config) 관련 ---
+                isActive(id) {
+                    // 값이 없으면(undefined) 기본적으로 true(ON)
+                    return this.activeConfig[id] !== false;
+                },
+
+                toggleActive(id) {
+                    // true -> false, false -> true
+                    if (this.activeConfig[id] === undefined) this.activeConfig[id] = true;
+                    this.activeConfig[id] = !this.activeConfig[id];
+                    this.saveData();
+                },
+                // -----------------------
+
+                toggleCheck(id, index) {
+                    if (!this.qcName) {
+                        alert('QC 담당자 이름(Pelapor)을 입력하세요!');
+                        return;
+                    }
+                    if (!this.statusData[id]) this.statusData[id] = [];
+                    while(this.statusData[id].length <= index) this.statusData[id].push(null);
+
+                    const current = this.statusData[id][index];
+                    const now = new Date();
+                    const timeString = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+
+                    if (current) {
+                        if(confirm('체크 취소?')) this.statusData[id][index] = null;
+                    } else {
+                        this.statusData[id][index] = timeString;
+                    }
+                    this.saveData();
+                },
+
+                getSlotStatus(id, index) { return this.statusData[id] && this.statusData[id][index]; },
+                getSlotTime(id, index) { return this.statusData[id] ? this.statusData[id][index] : ''; },
+                getCheckedCount(id) {
+                    if (!this.statusData[id]) return 0;
+                    return this.statusData[id].filter(val => val).length;
+                },
+                isCompleted(item) { return this.getCheckedCount(item.id) === item.totalCount; },
+
+                saveData() {
+                    const key = `qc_v3_${this.today}_${this.currentShift}`;
+                    const dataToSave = {
+                        status: this.statusData,
+                        config: this.activeConfig, // 설정값도 저장
+                        qcName: this.qcName
+                    };
+                    localStorage.setItem(key, JSON.stringify(dataToSave));
+                },
+
+                loadData() {
+                    const key = `qc_v3_${this.today}_${this.currentShift}`;
+                    const saved = localStorage.getItem(key);
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        this.statusData = parsed.status || {};
+                        this.activeConfig = parsed.config || {};
+                        this.qcName = parsed.qcName || '';
+                    } else {
+                        this.statusData = {};
+                        this.activeConfig = {};
+                        this.qcName = '';
+                    }
+                },
+
+                resetData() {
+                    if(confirm('모든 데이터가 삭제됩니다.')) {
+                        localStorage.removeItem(`qc_v3_${this.today}_${this.currentShift}`);
+                        location.reload();
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
