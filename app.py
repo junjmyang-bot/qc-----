@@ -23,12 +23,15 @@ st.markdown("""
 def get_worksheet():
     try:
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        # Secrets에서 열쇠를 가져옵니다.
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
         gc = gspread.authorize(creds)
-        # 준모님 전용 시트 URL
         SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit'
         return gc.open_by_url(SHEET_URL).sheet1
-    except: return None
+    except Exception as e:
+        # 실패라고만 하지 말고, 진짜 에러 내용을 보여줘!
+        st.error(f"🚨 연결 에러 발생: {e}")
+        return None
 
 worksheet = get_worksheet()
 
