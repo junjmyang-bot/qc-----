@@ -8,11 +8,13 @@ from google.oauth2.service_account import Credentials
 # --- 1. 앱 세팅 및 자카르타 시간 설정 ---
 st.set_page_config(page_title="SOI QC HIGH-SPEED", layout="wide", page_icon="🏭")
 
+# 자카르타 시간(WIB) 설정
 jakarta_tz = pytz.timezone('Asia/Jakarta')
 now_jakarta = datetime.now(jakarta_tz)
 today = now_jakarta.strftime('%Y-%m-%d')
 current_time_full = now_jakarta.strftime('%H:%M:%S')
 
+# 화면 최적화 CSS
 st.markdown("<style>div[data-testid='stStatusWidget']{display:none!important;}.main{background-color:white!important;}</style>", unsafe_allow_html=True)
 
 @st.cache_resource
@@ -79,8 +81,15 @@ with st.sidebar:
 # --- 4. 메인 UI ---
 st.title("🏭 QC 모니터링 시스템")
 c1, c2 = st.columns(2)
-with c1: shift = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"])
-with c2: pelapor = st.text_input("담당자 (PELAPOR)", value="JUNMO YANG")
+with c1: 
+    shift = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"])
+
+# 🌟 QC 직원 명단 설정
+qc_staff = ["Diana", "Uyun", "Rossa", "Dini", "JUNMO YANG"] 
+
+with c2: 
+    # 드롭다운 선택 방식으로 변경
+    pelapor = st.selectbox("담당자 (PELAPOR)", qc_staff)
 
 def draw(label, key, goal, show):
     if show:
@@ -124,7 +133,7 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
         t_key = f"{today} ({shift})"
         def cv(v): return ", ".join(v) if isinstance(v, list) else v
         
-        # 1. B열 이름표 데이터 구성 (Column B)
+        # 1. B열 이름표 데이터 구성
         labels = [
             "▶ 보고서 정보", "담당자 (PELAPOR)", "", "", 
             "▶ 30분 단위", "A-4 Laporan QC", "A-4 코멘트", "", 
@@ -149,7 +158,7 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
             "▶ 종합 메모", "기록 시간"
         ]
 
-        # 2. 실제 데이터 구성 (Current Shift Column)
+        # 2. 실제 데이터 구성
         payload = [
             t_key, pelapor, "", "", 
             "", get_prog_bar(st.session_state.qc_store["a4"], g_a4) if sw_a4 else "-", m_a4, "", 
@@ -170,7 +179,6 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
             cv(p_b1) if sw_b1 else "-", m_b1, "", new_memo, current_time_full
         ]
 
-        # 3. 열 찾기 및 이름표 복구 로직
         head = all_v[1] if len(all_v) > 1 else []
         idx = -1
         for i, v in enumerate(head):
@@ -182,7 +190,7 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
             while n > 0: n, rem = divmod(n - 1, 26); r = chr(65 + rem) + r
             return r
         
-        # B열(이름표)이 비어있으면 채우기
+        # B열 이름표 자동 업데이트
         worksheet.update("B2", [[v] for v in labels])
         # 해당 시프트 열에 데이터 저장
         worksheet.update(f"{get_c(idx)}2", [[v] for v in payload])
