@@ -15,21 +15,20 @@ current_time_full = now_jakarta.strftime('%H:%M:%S')
 
 st.markdown("<style>div[data-testid='stStatusWidget']{display:none!important;}.main{background-color:white!important;}</style>", unsafe_allow_html=True)
 
+# 🌟 구글 시트 클라이언트 접속 (캐싱 처리)
 @st.cache_resource
-def get_worksheet():
+def get_gc_client():
     try:
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         raw_json = st.secrets["gcp_service_account"]
         info = json.loads(raw_json, strict=False) 
         creds = Credentials.from_service_account_info(info, scopes=scopes)
-        gc = gspread.authorize(creds)
-        SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit'
-        return gc.open_by_url(SHEET_URL).sheet1
+        return gspread.authorize(creds)
     except Exception as e:
         st.error(f"🚨 연결 에러: {e}")
         return None
 
-worksheet = get_worksheet()
+gc = get_gc_client()
 
 # --- 2. 데이터 저장소 설정 ---
 ITEMS = ["a4","a5","b3","b4","b5","b9","a8","b2","b6","b7","b8","b10","a1","a2","a3","a6","a7","a9","b1"]
@@ -80,9 +79,10 @@ with st.sidebar:
 st.title("🏭 QC 모니터링 시스템")
 c1, c2 = st.columns(2)
 with c1: 
-    shift = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"])
+    # 🌟 시프트 선택 (이 선택에 따라 저장되는 시트 탭이 바뀝니다!)
+    shift_options = ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"]
+    shift = st.selectbox("SHIFT", shift_options)
 
-# 🌟 QC 4인방 + 준모님 명단
 qc_staff = ["Diana", "Uyun", "Rossa", "Dini", "JUNMO YANG"] 
 with c2: 
     pelapor = st.selectbox("담당자 (PELAPOR)", qc_staff)
@@ -124,32 +124,38 @@ st.subheader("📝 종합 메모")
 new_memo = st.text_area("특이사항 입력", key="main_memo")
 
 if st.button("💾 구글 시트에 업데이트", use_container_width=True):
-    if worksheet:
-        # 헤더 구성을 위한 열 정보 (식별을 위해 상세 정보 포함)
-        header_title = f"{today} | {shift} | {pelapor} | {current_time_full[:5]}"
-        
-        def cv(v): return ", ".join(v) if isinstance(v, list) else v
-        
-        # 1. B열 이름표 (이미 있으면 안 써도 되지만 안전을 위해 유지)
-        labels = ["▶ 보고서 정보", "시프트/담당자", "", "", "▶ 30분 단위", "A-4 QC", "A-4 코멘트", "", "A-5 Steam", "A-5 코멘트", "", "B-3 Kupas", "B-3 코멘트", "", "B-4 Packing", "B-4 코멘트", "", "B-5 Hasil", "B-5 코멘트", "", "B-9 Kondisi", "B-9 코멘트", "", "▶ 1시간 단위", "A-8 Barang", "A-8 코멘트", "", "B-2 Steam", "B-2 코멘트", "", "B-6 Giling", "B-6 코멘트", "", "B-7 Steril", "B-7 코멘트", "", "B-8 Potong", "B-8 코멘트", "", "B-10 Dry", "B-10 코멘트", "", "▶ 시프트 루틴", "A-1 Stok", "A-1 메모", "", "A-2 BS", "A-2 메모", "", "A-3 Handover", "A-3 메모", "", "A-6 List", "A-6 메모", "", "A-7 Rencana", "A-7 메모", "", "A-9 Sisa", "A-9 메모", "", "B-1 Absen", "B-1 메모", "", "▶ 종합 메모", "기록 시각"]
+    if gc:
+        try:
+            # 🌟 시프트명에 따른 탭 자동 매칭
+            sheet_map = {
+                "Shift 1 (Pagi)": "Shift 1",
+                "Shift 2 (Sore)": "Shift 2",
+                "Shift tengah": "Shift Tengah"
+            }
+            tab_name = sheet_map[shift]
+            
+            SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit'
+            worksheet = gc.open_by_url(SHEET_URL).worksheet(tab_name)
+            
+            header_title = f"{today} | {pelapor} | {current_time_full[:5]}"
+            def cv(v): return ", ".join(v) if isinstance(v, list) else v
+            
+            labels = ["▶ 보고서 정보", "담당자", "", "", "▶ 30분 단위", "A-4 QC", "A-4 코멘트", "", "A-5 Steam", "A-5 코멘트", "", "B-3 Kupas", "B-3 코멘트", "", "B-4 Packing", "B-4 코멘트", "", "B-5 Hasil", "B-5 코멘트", "", "B-9 Kondisi", "B-9 코멘트", "", "▶ 1시간 단위", "A-8 Barang", "A-8 코멘트", "", "B-2 Steam", "B-2 코멘트", "", "B-6 Giling", "B-6 코멘트", "", "B-7 Steril", "B-7 코멘트", "", "B-8 Potong", "B-8 코멘트", "", "B-10 Dry", "B-10 코멘트", "", "▶ 시프트 루틴", "A-1 Stok", "A-1 메모", "", "A-2 BS", "A-2 메모", "", "A-3 Handover", "A-3 메모", "", "A-6 List", "A-6 메모", "", "A-7 Rencana", "A-7 메모", "", "A-9 Sisa", "A-9 메모", "", "B-1 Absen", "B-1 메모", "", "▶ 종합 메모", "기록 시각"]
+            payload = [header_title, pelapor, "", "", "", get_prog_bar(st.session_state.qc_store["a4"], g_a4) if sw_a4 else "-", m_a4, "", get_prog_bar(st.session_state.qc_store["a5"], g_a5) if sw_a5 else "-", m_a5, "", get_prog_bar(st.session_state.qc_store["b3"], g_b3) if sw_b3 else "-", m_b3, "", get_prog_bar(st.session_state.qc_store["b4"], g_b4) if sw_b4 else "-", m_b4, "", get_prog_bar(st.session_state.qc_store["b5"], g_b5) if sw_b5 else "-", m_b5, "", get_prog_bar(st.session_state.qc_store["b9"], g_b9) if sw_b9 else "-", m_b9, "", "", get_prog_bar(st.session_state.qc_store["a8"], g_a8) if sw_a8 else "-", m_a8, "", get_prog_bar(st.session_state.qc_store["b2"], g_b2) if sw_b2 else "-", m_b2, "", get_prog_bar(st.session_state.qc_store["b6"], g_b6) if sw_b6 else "-", m_b6, "", get_prog_bar(st.session_state.qc_store["b7"], g_b7) if sw_b7 else "-", m_b7, "", get_prog_bar(st.session_state.qc_store["b8"], g_b8) if sw_b8 else "-", m_b8, "", get_prog_bar(st.session_state.qc_store["b10"], g_b10) if sw_b10 else "-", m_b10, "", "", cv(p_a1) if sw_a1 else "-", m_a1, "", cv(p_a2) if sw_a2 else "-", m_a2, "", cv(p_a3) if sw_a3 else "-", m_a3, "", cv(p_a6) if sw_a6 else "-", m_a6, "", cv(p_a7) if sw_a7 else "-", m_a7, "", cv(p_a9) if sw_a9 else "-", m_a9, "", cv(p_b1) if sw_b1 else "-", m_b1, "", new_memo, current_time_full]
 
-        # 2. 실제 데이터
-        payload = [header_title, f"{shift} ({pelapor})", "", "", "", get_prog_bar(st.session_state.qc_store["a4"], g_a4) if sw_a4 else "-", m_a4, "", get_prog_bar(st.session_state.qc_store["a5"], g_a5) if sw_a5 else "-", m_a5, "", get_prog_bar(st.session_state.qc_store["b3"], g_b3) if sw_b3 else "-", m_b3, "", get_prog_bar(st.session_state.qc_store["b4"], g_b4) if sw_b4 else "-", m_b4, "", get_prog_bar(st.session_state.qc_store["b5"], g_b5) if sw_b5 else "-", m_b5, "", get_prog_bar(st.session_state.qc_store["b9"], g_b9) if sw_b9 else "-", m_b9, "", "", get_prog_bar(st.session_state.qc_store["a8"], g_a8) if sw_a8 else "-", m_a8, "", get_prog_bar(st.session_state.qc_store["b2"], g_b2) if sw_b2 else "-", m_b2, "", get_prog_bar(st.session_state.qc_store["b6"], g_b6) if sw_b6 else "-", m_b6, "", get_prog_bar(st.session_state.qc_store["b7"], g_b7) if sw_b7 else "-", m_b7, "", get_prog_bar(st.session_state.qc_store["b8"], g_b8) if sw_b8 else "-", m_b8, "", get_prog_bar(st.session_state.qc_store["b10"], g_b10) if sw_b10 else "-", m_b10, "", "", cv(p_a1) if sw_a1 else "-", m_a1, "", cv(p_a2) if sw_a2 else "-", m_a2, "", cv(p_a3) if sw_a3 else "-", m_a3, "", cv(p_a6) if sw_a6 else "-", m_a6, "", cv(p_a7) if sw_a7 else "-", m_a7, "", cv(p_a9) if sw_a9 else "-", m_a9, "", cv(p_b1) if sw_b1 else "-", m_b1, "", new_memo, current_time_full]
-
-        # 🌟 무조건 마지막 열의 다음 열(새 열) 찾기
-        all_v = worksheet.get_all_values()
-        current_cols = len(all_v[1]) if len(all_v) > 1 else 2 # B열 다음인 C열부터 시작
-        new_idx = current_cols + 1
-        
-        def get_c(n):
-            r = ""
-            while n > 0: n, rem = divmod(n - 1, 26); r = chr(65 + rem) + r
-            return r
-        
-        # B열 이름표 고정
-        worksheet.update("B2", [[v] for v in labels])
-        # 무조건 새로운 열에 데이터 추가
-        worksheet.update(f"{get_c(new_idx)}2", [[v] for v in payload])
-        
-        st.success(f"✅ 새 리포트 저장 성공! (담당: {pelapor}, 열: {get_c(new_idx)})")
+            all_v = worksheet.get_all_values()
+            current_cols = len(all_v[1]) if len(all_v) > 1 else 2
+            new_idx = current_cols + 1
+            
+            def get_c(n):
+                r = ""
+                while n > 0: n, rem = divmod(n - 1, 26); r = chr(65 + rem) + r
+                return r
+            
+            worksheet.update("B2", [[v] for v in labels])
+            worksheet.update(f"{get_c(new_idx)}2", [[v] for v in payload])
+            
+            st.success(f"✅ [{tab_name}] 저장 성공! (담당: {pelapor})")
+        except Exception as e:
+            st.error(f"🚨 저장 실패: {tab_name} 시트가 있는지 확인해 주세요. ({e})")
     else: st.error("시트 연결 실패")
