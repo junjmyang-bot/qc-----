@@ -2,22 +2,19 @@ import streamlit as st
 from datetime import datetime
 import gspread
 import json
-import pytz  # 자카르타 시간 설정을 위한 부품
+import pytz 
 from google.oauth2.service_account import Credentials
 
 # --- 1. 앱 세팅 및 자카르타 시간 설정 ---
 st.set_page_config(page_title="SOI QC HIGH-SPEED", layout="wide", page_icon="🏭")
 
-# 자카르타(WIB) 시간 고정
 jakarta_tz = pytz.timezone('Asia/Jakarta')
 now_jakarta = datetime.now(jakarta_tz)
 today = now_jakarta.strftime('%Y-%m-%d')
 current_time_full = now_jakarta.strftime('%H:%M:%S')
 
-# 🌟 화면 최적화 CSS
 st.markdown("<style>div[data-testid='stStatusWidget']{display:none!important;}.main{background-color:white!important;}</style>", unsafe_allow_html=True)
 
-# 🌟 구글 시트 연결
 @st.cache_resource
 def get_worksheet():
     try:
@@ -53,10 +50,9 @@ def get_prog_bar(val, goal):
     perc = int((len(val)/goal)*100) if goal > 0 else 0
     return f"{'■' * (perc // 10)}{'□' * (10 - (perc // 10))} ({perc}%)"
 
-# --- 3. 사이드바: 19개 항목 이름표 복구 ---
+# --- 3. 사이드바 설정 ---
 with st.sidebar:
     st.header("⚙️ 리포트 세부 설정")
-    
     with st.expander("⚡ 30분 단위 설정", expanded=True):
         sw_a4=st.toggle("A-4 Laporan QC",True); g_a4=st.number_input("A-4 목표",1,30,16)
         sw_a5=st.toggle("A-5 Status Tes Steam",True); g_a5=st.number_input("A-5 목표",1,30,10)
@@ -64,7 +60,6 @@ with st.sidebar:
         sw_b4=st.toggle("B-4 Packing 상황보고",True); g_b4=st.number_input("B-4 목표",1,30,16)
         sw_b5=st.toggle("B-5 시간당 결과",True); g_b5=st.number_input("B-5 목표",1,30,16)
         sw_b9=st.toggle("B-9 원료 조건 보고",True); g_b9=st.number_input("B-9 목표",1,30,16)
-
     with st.expander("⏰ 1시간 단위 설정", expanded=False):
         sw_a8=st.toggle("A-8 낙하물 상태",True); g_a8=st.number_input("A-8 목표",1,24,8)
         sw_b2=st.toggle("B-2 스팀 상태",True); g_b2=st.number_input("B-2 목표",1,24,8)
@@ -72,7 +67,6 @@ with st.sidebar:
         sw_b7=st.toggle("B-7 분쇄 보고(살균)",True); g_b7=st.number_input("B-7 목표",1,24,8)
         sw_b8=st.toggle("B-8 절단 보고",True); g_b8=st.number_input("B-8 목표",1,24,8)
         sw_b10=st.toggle("B-10 건조 보고",True); g_b10=st.number_input("B-10 목표",1,24,8)
-
     with st.expander("📅 시프트 루틴 설정", expanded=False):
         sw_a1=st.toggle("A-1 루틴",True); g_a1=st.number_input("A-1 목표",1,5,2)
         sw_a2=st.toggle("A-2 루틴",True); g_a2=st.number_input("A-2 목표",1,5,2)
@@ -129,9 +123,36 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
         all_v = worksheet.get_all_values()
         t_key = f"{today} ({shift})"
         def cv(v): return ", ".join(v) if isinstance(v, list) else v
+        
+        # 1. B열 이름표 데이터 구성 (Column B)
+        labels = [
+            "▶ 보고서 정보", "담당자 (PELAPOR)", "", "", 
+            "▶ 30분 단위", "A-4 Laporan QC", "A-4 코멘트", "", 
+            "A-5 Status Tes Steam", "A-5 코멘트", "", 
+            "B-3 Situasi Kupas", "B-3 코멘트", "", 
+            "B-4 Situasi Packing", "B-4 코멘트", "", 
+            "B-5 Hasil Per Jam", "B-5 코멘트", "", 
+            "B-9 Kondisi BB", "B-9 코멘트", "", 
+            "▶ 1시간 단위", "A-8 Barang Jatuh", "A-8 코멘트", "", 
+            "B-2 Status Steam", "B-2 코멘트", "", 
+            "B-6 Laporan Giling", "B-6 코멘트", "", 
+            "B-7 Steril", "B-7 코멘트", "", 
+            "B-8 Potong", "B-8 코멘트", "", 
+            "B-10 Dry", "B-10 코멘트", "", 
+            "▶ 시프트 루틴", "A-1 Stok BB", "A-1 메모", "", 
+            "A-2 Stok BS", "A-2 메모", "", 
+            "A-3 Handover IN", "A-3 메모", "", 
+            "A-6 List BB", "A-6 메모", "", 
+            "A-7 Rencana", "A-7 메모", "", 
+            "A-9 Sisa Barang", "A-9 메모", "", 
+            "B-1 Absensi", "B-1 메모", "", 
+            "▶ 종합 메모", "기록 시간"
+        ]
+
+        # 2. 실제 데이터 구성 (Current Shift Column)
         payload = [
-            "", t_key, pelapor, "", "", 
-            get_prog_bar(st.session_state.qc_store["a4"], g_a4) if sw_a4 else "-", m_a4, "", 
+            t_key, pelapor, "", "", 
+            "", get_prog_bar(st.session_state.qc_store["a4"], g_a4) if sw_a4 else "-", m_a4, "", 
             get_prog_bar(st.session_state.qc_store["a5"], g_a5) if sw_a5 else "-", m_a5, "", 
             get_prog_bar(st.session_state.qc_store["b3"], g_b3) if sw_b3 else "-", m_b3, "", 
             get_prog_bar(st.session_state.qc_store["b4"], g_b4) if sw_b4 else "-", m_b4, "", 
@@ -148,6 +169,8 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
             cv(p_a7) if sw_a7 else "-", m_a7, "", cv(p_a9) if sw_a9 else "-", m_a9, "", 
             cv(p_b1) if sw_b1 else "-", m_b1, "", new_memo, current_time_full
         ]
+
+        # 3. 열 찾기 및 이름표 복구 로직
         head = all_v[1] if len(all_v) > 1 else []
         idx = -1
         for i, v in enumerate(head):
@@ -158,6 +181,11 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
             r = ""
             while n > 0: n, rem = divmod(n - 1, 26); r = chr(65 + rem) + r
             return r
-        worksheet.update(f"{get_c(idx)}1", [[v] for v in payload])
+        
+        # B열(이름표)이 비어있으면 채우기
+        worksheet.update("B2", [[v] for v in labels])
+        # 해당 시프트 열에 데이터 저장
+        worksheet.update(f"{get_c(idx)}2", [[v] for v in payload])
+        
         st.success(f"✅ 저장 성공! (자카르타 시간: {current_time_full})")
     else: st.error("시트 연결 실패")
