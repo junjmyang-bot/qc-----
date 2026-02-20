@@ -1,34 +1,40 @@
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import gspread
 import json
+import pytz  # 👈 자카르타 시간 설정을 위한 부품
 from google.oauth2.service_account import Credentials
 
-# --- 1. 앱 세팅 및 CSS ---
+# --- 1. 앱 세팅 및 자카르타 시간 설정 ---
 st.set_page_config(page_title="SOI QC HIGH-SPEED", layout="wide", page_icon="🏭")
+
+# 자카르타 시간(WIB) 고정
+jakarta_tz = pytz.timezone('Asia/Jakarta')
+now_jakarta = datetime.now(jakarta_tz)
+today = now_jakarta.strftime('%Y-%m-%d')
+current_time_full = now_jakarta.strftime('%H:%M:%S')
+
+# 🌟 화면 최적화 CSS
 st.markdown("<style>div[data-testid='stStatusWidget']{display:none!important;}.main{background-color:white!important;}</style>", unsafe_allow_html=True)
 
-# --- 2. 구글 시트 연결 (유령 문자 무시 버전) ---
+# 🌟 구글 시트 연결
 @st.cache_resource
 def get_worksheet():
     try:
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-        # 💡 strict=False를 추가해 보이지 않는 줄바꿈 에러를 방지합니다.
         raw_json = st.secrets["gcp_service_account"]
         info = json.loads(raw_json, strict=False) 
-        
         creds = Credentials.from_service_account_info(info, scopes=scopes)
         gc = gspread.authorize(creds)
-        
         SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit'
         return gc.open_by_url(SHEET_URL).sheet1
     except Exception as e:
-        st.error(f"🚨 연결 에러 발생: {e}")
+        st.error(f"🚨 연결 에러: {e}")
         return None
 
 worksheet = get_worksheet()
 
-# --- 3. 데이터 저장소 및 원터치 로직 ---
+# --- 2. 데이터 저장소 설정 ---
 ITEMS = ["a4","a5","b3","b4","b5","b9","a8","b2","b6","b7","b8","b10","a1","a2","a3","a6","a7","a9","b1"]
 if 'qc_store' not in st.session_state:
     st.session_state.qc_store = {k: [] for k in ITEMS}
@@ -45,25 +51,9 @@ def fast_cascade(key):
 
 def get_prog_bar(val, goal):
     perc = int((len(val)/goal)*100) if goal > 0 else 0
-    if perc > 100: perc = 100
     return f"{'■' * (perc // 10)}{'□' * (10 - (perc // 10))} ({perc}%)"
 
-# --- 4. 메인 UI ---
-st.title("🏭 QC 모니터링 시스템")
-today = datetime.now().strftime('%Y-%m-%d')
-c1, c2 = st.columns(2)
-with c1: shift = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"])
-with c2: pelapor = st.text_input("담당자 (PELAPOR)", value="JUNMO YANG")
-
-def draw(label, key, goal, show):
-    if show:
-        st.markdown(f"**{label}**")
-        v = st.session_state.v_map[key]
-        st.pills(label, [str(i) for i in range(1, goal+1)], key=f"u_{key}_{v}", on_change=fast_cascade, args=(key,), selection_mode="multi", label_visibility="collapsed", default=st.session_state.qc_store[key])
-        return st.text_input(f"{label} 코멘트", key=f"m_{key}")
-    return ""
-
-# (설정값은 사이드바에서 가져옵니다)
+# --- 3. 사이드바 설정 (항목 사라짐 방지) ---
 with st.sidebar:
     st.header("⚙️ 리포트 세부 설정")
     with st.expander("⚡ 30분 단위", expanded=True):
@@ -89,10 +79,24 @@ with st.sidebar:
         sw_a9=st.toggle("A-9",True); g_a9=st.number_input("A-9 목표",1,5,1)
         sw_b1=st.toggle("B-1",True); g_b1=st.number_input("B-1 목표",1,5,2)
 
+# --- 4. 메인 UI ---
+st.title("🏭 QC 모니터링 시스템")
+c1, c2 = st.columns(2)
+with c1: shift = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"])
+with c2: pelapor = st.text_input("담당자", value="JUNMO YANG")
+
+def draw(label, key, goal, show):
+    if show:
+        st.markdown(f"**{label}**")
+        v = st.session_state.v_map[key]
+        st.pills(label, [str(i) for i in range(1, goal+1)], key=f"u_{key}_{v}", on_change=fast_cascade, args=(key,), selection_mode="multi", label_visibility="collapsed", default=st.session_state.qc_store[key])
+        return st.text_input(f"{label} 코멘트", key=f"m_{key}")
+    return ""
+
 st.subheader("⚡ 30분 단위")
 with st.container(border=True):
     m_a4=draw("A-4 QC Tablet","a4",g_a4,sw_a4); m_a5=draw("A-5 Steam Test","a5",g_a5,sw_a5)
-    m_b3=draw("B-3 Situasi Kupas","b3",g_b3,sw_b3); m_b4=draw("B-4 Situasi Packing","b4",g_b4,sw_b4)
+    m_b3=draw("B-3 Kupas","b3",g_b3,sw_b3); m_b4=draw("B-4 Packing","b4",g_b4,sw_b4)
     m_b5=draw("B-5 Hasil Per Jam","b5",g_b5,sw_b5); m_b9=draw("B-9 Kondisi BB","b9",g_b9,sw_b9)
 
 st.subheader("⏰ 1시간 단위")
@@ -120,14 +124,8 @@ new_memo = st.text_area("특이사항 입력", key="main_memo")
 if st.button("💾 구글 시트에 업데이트", use_container_width=True):
     if worksheet:
         all_v = worksheet.get_all_values()
-        t_key = f"{today} ({shift})"; head = all_v[1] if len(all_v) > 1 else []
-        idx = -1; old_m = ""
-        for i, v in enumerate(head):
-            if v == t_key: 
-                idx = i + 1
-                if len(all_v) > 63: old_m = all_v[63][i]
-                break
-        final_m = old_m + f"\n[{datetime.now().strftime('%H:%M')}] {new_memo}" if new_memo else old_m
+        t_key = f"{today} ({shift})"
+        # 65행 양식에 맞춘 데이터 구성 (공백 포함)
         def cv(v): return ", ".join(v) if isinstance(v, list) else v
         payload = [
             "", t_key, pelapor, "", "", 
@@ -146,14 +144,19 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
             "", cv(p_a1) if sw_a1 else "-", m_a1, "", cv(p_a2) if sw_a2 else "-", m_a2, "", 
             cv(p_a3) if sw_a3 else "-", m_a3, "", cv(p_a6) if sw_a6 else "-", m_a6, "", 
             cv(p_a7) if sw_a7 else "-", m_a7, "", cv(p_a9) if sw_a9 else "-", m_a9, "", 
-            cv(p_b1) if sw_b1 else "-", m_b1, "", final_m, datetime.now().strftime('%H:%M:%S')
+            cv(p_b1) if sw_b1 else "-", m_b1, "", new_memo, current_time_full
         ]
+        # 열 찾기 (중략)
+        head = all_v[1] if len(all_v) > 1 else []
+        idx = -1
+        for i, v in enumerate(head):
+            if v == t_key: idx = i + 1; break
         if idx == -1: idx = len(head) + 1 if len(head) >= 3 else 3
+        
         def get_c(n):
             r = ""
             while n > 0: n, rem = divmod(n - 1, 26); r = chr(65 + rem) + r
             return r
         worksheet.update(f"{get_c(idx)}1", [[v] for v in payload])
-        st.success("✅ 저장 성공!")
-    else:
-        st.error("시트 연결 실패")
+        st.success(f"✅ 저장 성공! (시간: {current_time_full})")
+    else: st.error("시트 연결 실패")
