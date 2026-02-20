@@ -167,6 +167,6 @@ if st.button("💾 구글 시트에 업데이트", use_container_width=True):
         worksheet.update(f"{get_c(idx)}1", [[v] for v in payload])
         st.success("✅ 저장 성공!")
     else: st.error("시트 연결 실패")
-streamlit
+st.success("✅ 저장 완료!")
 gspread
 google-auth
