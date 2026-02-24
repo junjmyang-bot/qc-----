@@ -19,7 +19,7 @@ st.markdown("<style>div[data-testid='stStatusWidget']{display:none!important;}.m
 TELEGRAM_TOKEN = st.secrets["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 
-# 🌟 구글 시트 엔진 연동
+# 🌟 Engine Google Sheets (Koneksi Sheet)
 @st.cache_resource
 def get_gc_client():
     try:
@@ -32,34 +32,34 @@ def get_gc_client():
 
 gc = get_gc_client()
 
-# --- 2. [데이터 정의] 19개 항목 상세 가이드 ---
+# --- 2. [Data Konten] Panduan Detail 19 Item (현지화 완료) ---
 QC_CONTENT = {
     "A": {
-        "a1": {"title": "Cek Stok BB Sudah steam", "qs": ["Sisa BB sisa shift sebelumya?", "Jumlah bb steam 충분?", "Respon if kurang?"]},
-        "a2": {"title": "Cek Stok BS (Sudah defros)", "qs": ["Sudah defros 얼마?", "Estimasi 작업량?", "Jam tambah defros?"]},
-        "a3": {"title": "Handover shift 전", "qs": ["Sudah dapat handover?", "Produksi sesuai rencana?"]},
+        "a1": {"title": "Cek Stok BB Sudah steam", "qs": ["Sisa BB sisa shift sebelumnya?", "Jumlah bb steam cukup?", "Respon jika kurang?"]},
+        "a2": {"title": "Cek Stok BS (Sudah defros)", "qs": ["Sudah defros berapa?", "Estimasi jumlah kerja?", "Jam tambah defros?"]},
+        "a3": {"title": "Handover shift Masuk", "qs": ["Sudah dapat handover?", "Produksi sesuai rencana?"]},
         "a7": {"title": "Handover & rencana", "qs": ["Rencana sudah dibuat?", "Handover sudah dibuat?", "Sudah baca data stok?"]},
-        "a9": {"title": "SISA BARANG", "qs": ["Check MAX 1 PACK", "Sisa shift prev?", "Sudah dibereskan?", "Simpan sisa?", "Handover sisa?"]},
+        "a9": {"title": "SISA BARANG", "qs": ["Check MAX 1 PACK (Sudah check?)", "Sisa shift prev?", "Sudah dibereskan?", "Simpan sisa?", "Handover sisa?"]},
         "a4": {"title": "Laporan QC pada Tablet", "check_items": ["Kebersihan harian", "Kontaminan kupas", "Kontaminan packing"]},
-        "a5": {"title": "Status Tes Steam", "desc": ["Maksimal selesai jam 13.00 완료", "Update laporan 30분 마다 보고", "Cek sampel & 보고서"]},
+        "a5": {"title": "Status Tes Steam", "desc": ["Maksimal selesai jam 13.00", "Update laporan setiap 30 menit", "Cek sampel & update laporan"]},
         "a6": {"title": "List BB butuh kirim", "qs": ["List kirim jam 12.00 sudah ada?", "Kordinasi gudang?"]},
         "a8": {"title": "Status Barang Jatuh", "areas": ["Steam Area", "Kupas Area", "Dry Area", "Packing Area", "Cuci Area"]}
     },
     "B": {
-        "b1": {"title": "Cek Laporan Absensi", "desc": ["Durasi 2 kali (Awal & Setelah Istirahat)", "인원 변동 확인"], "areas": ["Steam", "Dry", "Kupas", "Packing"]},
+        "b1": {"title": "Cek Laporan Absensi", "desc": ["Durasi 2 kali (Awal & Setelah Istirahat)", "Cek perubahan jumlah orang"], "areas": ["Steam", "Dry", "Kupas", "Packing"]},
         "b2": {"title": "Laporan Status steam", "qs": ["Laporan sesuai", "Cara isi laporan benar"]},
-        "b3": {"title": "Laporan Situasi kupas", "qs": ["TL sudah update?", "Kroscek 결과 이상무?", "TL kordinasi?", "Laporan 내용 일치?"]},
-        "b4": {"title": "Laporan Situasi packing", "qs": ["TL 이미 update 완료?", "kroscek 결과 이상무?", "TL kordinasi?", "laporan 내용 일치?"]},
-        "b5": {"title": "Hasil per jam kupas/packing", "qs": ["produk 일치 확인", "TL update 여부", "laporan 내용 일치?"]},
-        "b6": {"title": "Laporan Giling", "qs": ["produk 일치 확인", "TL update 여부", "laporan 내용 일치?"]},
-        "b7": {"title": "Laporan Giling - steril", "qs": ["produk 일치 확인", "TL update 여부", "laporan 내용 일치?"]},
-        "b8": {"title": "Laporan potong", "qs": ["produk 일치 확인", "TL update", "cara nata benar?", "settingan mesin benar?", "laporan 내용 일치?"]},
-        "b9": {"title": "Laporan kondisi BB", "qs": ["TL update 여부", "laporan 내용 일치?"]},
-        "b10": {"title": "Laporan Dry", "qs": ["TL update 여부", "laporan 내용 일치?", "status mesin 2회 체크?"]}
+        "b3": {"title": "Laporan Situasi kupas", "qs": ["TL sudah update?", "Kroscek benar?", "Kordinasi TL kupas-packing?", "Laporan sesuai?"]},
+        "b4": {"title": "Laporan Situasi packing", "qs": ["TL sudah update?", "Kroscek benar?", "Kordinasi TL kupas-packing?", "Laporan sesuai?"]},
+        "b5": {"title": "Hasil per jam kupas/packing", "qs": ["Produk sesuai", "TL sudah update", "Laporan sesuai"]},
+        "b6": {"title": "Laporan Giling", "qs": ["Produk sesuai", "TL sudah update", "Laporan sesuai"]},
+        "b7": {"title": "Laporan Giling - steril", "qs": ["Produk sesuai", "TL sudah update", "Laporan sesuai"]},
+        "b8": {"title": "Laporan potong", "qs": ["Produk sesuai", "TL update", "Cara nata benar?", "Settingan mesin benar?", "Laporan sesuai"]},
+        "b9": {"title": "Laporan kondisi BB", "qs": ["TL update", "Laporan sesuai"]},
+        "b10": {"title": "Laporan Dry", "qs": ["TL update", "Laporan sesuai", "Status mesin 2 kali"]}
     }
 }
 
-# --- 3. 세션 초기화 ---
+# --- 3. Inisialisasi Session State ---
 B_KEYS = ["b2","b3","b4","b5","b6","b7","b8","b9","b10"]
 GRID_KEYS = ["a4", "a8"] + B_KEYS
 
@@ -68,7 +68,7 @@ if 'a4_ts' not in st.session_state: st.session_state.a4_ts = []
 if 'a8_logs' not in st.session_state: st.session_state.a8_logs = []
 if 'targets' not in st.session_state: st.session_state.targets = {k: 0 for k in GRID_KEYS}
 TARGET_LABELS = ["Awal Masuk", "Setelah Istirahat"]
-if 'b1_data' not in st.session_state:
+if 'b1_data' not in st.session_state or list(st.session_state.b1_data.keys()) != TARGET_LABELS:
     st.session_state.b1_data = {t: {a: {"jam": "", "pax": "", "st": "O"} for a in QC_CONTENT['B']['b1']['areas']} for t in TARGET_LABELS}
 
 def get_prog_bar(val_len, goal):
@@ -80,37 +80,37 @@ def send_telegram(text):
 
 @st.dialog("Konfirmasi Pembatalan")
 def confirm_cancel_dialog(key, idx):
-    st.warning("Hapus record ini?")
+    st.warning("Apakah Anda yakin ingin menghapus record ini?")
     if st.button("Ya, Hapus", type="primary", use_container_width=True):
         if key == "a4": st.session_state.a4_ts = st.session_state.a4_ts[:idx]
         elif key == "a8": st.session_state.a8_logs = st.session_state.a8_logs[:idx]
         else: st.session_state.b_logs[key] = st.session_state.b_logs[key][:idx]
         st.rerun()
 
-# --- 4. Sidebar: Pengaturan ---
+# --- 4. Sidebar: Pengaturan Detail (현지화 완료) ---
 with st.sidebar:
-    st.header("⚙️ 리포트 세부 설정")
+    st.header("⚙️ Pengaturan Laporan")
     with st.expander("📅 Visibilitas Rutinitas Shift", expanded=True):
         sw_a1=st.toggle(f"A-1 {QC_CONTENT['A']['a1']['title']}", True); sw_a2=st.toggle(f"A-2 {QC_CONTENT['A']['a2']['title']}", True)
         sw_a3=st.toggle("A-3 Handover Masuk", True); sw_a7=st.toggle("A-7 Rencana & Handover", True); sw_a9=st.toggle("A-9 Sisa Barang", True)
         st.divider(); sw_a5=st.toggle(f"A-5 {QC_CONTENT['A']['a5']['title']}", True); sw_a6=st.toggle("A-6 List Kirim BB", True)
         st.divider(); sw_b1=st.toggle("B-1 Absensi Laporan", True)
 
-    with st.expander("⚡ 30분 단위 목표 설정", expanded=False):
+    with st.expander("⚡ Target Interval 30 Menit", expanded=False):
         for k in ["a4", "b3", "b4", "b5", "b9"]:
             info = QC_CONTENT['A' if 'a' in k else 'B'][k]
             st.session_state[f"sw_{k}"] = st.toggle(f"{k.upper()} {info['title']}", True, key=f"tog_{k}")
             if st.session_state[f"sw_{k}"]:
                 st.session_state.targets[k] = st.number_input(f"Target {k.upper()}", 0, 48, st.session_state.targets[k], key=f"inp_{k}")
 
-    with st.expander("⏰ 1시간 단위 목표 설정", expanded=False):
+    with st.expander("⏰ Target Interval 1 Jam", expanded=False):
         for k in ["a8", "b2", "b6", "b7", "b8", "b10"]:
             info = QC_CONTENT['A' if 'a' in k else 'B'][k]
             st.session_state[f"sw_{k}"] = st.toggle(f"{k.upper()} {info['title']}", True, key=f"tog_{k}")
             if st.session_state[f"sw_{k}"]:
                 st.session_state.targets[k] = st.number_input(f"Target {k.upper()}", 0, 48, st.session_state.targets[k], key=f"inp_{k}")
 
-# --- 5. Main UI ---
+# --- 5. Main UI (Pemisahan Seksi) ---
 st.title("🏭 SOI QC MONITORING SYSTEM")
 ch1, ch2 = st.columns(2)
 with ch1: shift_label = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift Tengah"])
@@ -123,41 +123,41 @@ with st.container(border=True):
         st.info("🅰️ QC Direct Check")
         if sw_a1:
             st.markdown(f"**A1. {QC_CONTENT['A']['a1']['title']}**")
-            p_a1 = st.pills("Waktu A1", TARGET_LABELS, selection_mode="multi", key="p_a1")
-            ans_a1_1=st.text_input(f"1. {QC_CONTENT['A']['a1']['qs'][0]}", key="ans_a1_1")
-            ans_a1_2=st.text_input(f"2. {QC_CONTENT['A']['a1']['qs'][1]}", key="ans_a1_2")
-            ans_a1_3=st.text_input(f"3. {QC_CONTENT['A']['a1']['qs'][2]}", key="ans_a1_3"); st.divider()
+            st.pills("Waktu Cek A1", TARGET_LABELS, selection_mode="multi", key="p_a1")
+            st.text_input(f"1. {QC_CONTENT['A']['a1']['qs'][0]}", key="ans_a1_1")
+            st.text_input(f"2. {QC_CONTENT['A']['a1']['qs'][1]}", key="ans_a1_2")
+            st.text_input(f"3. {QC_CONTENT['A']['a1']['qs'][2]}", key="ans_a1_3"); st.divider()
         if sw_a2:
             st.markdown(f"**A2. {QC_CONTENT['A']['a2']['title']}**")
-            p_a2 = st.pills("Waktu C2", TARGET_LABELS, selection_mode="multi", key="p_a2")
-            ans_a2_1=st.text_input(f"1. {QC_CONTENT['A']['a2']['qs'][0]}", key="ans_a2_1")
-            ans_a2_2=st.text_input(f"2. {QC_CONTENT['A']['a2']['qs'][1]}", key="ans_a2_2")
-            ans_a2_3=st.text_input(f"3. {QC_CONTENT['A']['a2']['qs'][2]}", key="ans_a2_3"); st.divider()
+            st.pills("Waktu Cek A2", TARGET_LABELS, selection_mode="multi", key="p_a2")
+            st.text_input(f"1. {QC_CONTENT['A']['a2']['qs'][0]}", key="ans_a2_1")
+            st.text_input(f"2. {QC_CONTENT['A']['a2']['qs'][1]}", key="ans_a2_2")
+            st.text_input(f"3. {QC_CONTENT['A']['a2']['qs'][2]}", key="ans_a2_3"); st.divider()
         if sw_a3:
             st.markdown(f"**A3. {QC_CONTENT['A']['a3']['title']}**")
-            ans_a3_1=st.radio(f"1. {QC_CONTENT['A']['a3']['qs'][0]}", ["Yes", "No"], horizontal=True, key="ans_a3_1")
-            ans_a3_2=st.radio(f"2. {QC_CONTENT['A']['a3']['qs'][1]}", ["Yes", "No"], horizontal=True, key="ans_a3_2"); st.divider()
+            st.radio(f"1. {QC_CONTENT['A']['a3']['qs'][0]}", ["Yes", "No"], horizontal=True, key="ans_a3_1")
+            st.radio(f"2. {QC_CONTENT['A']['a3']['qs'][1]}", ["Yes", "No"], horizontal=True, key="ans_a3_2"); st.divider()
         if sw_a7:
             st.markdown(f"**A7. {QC_CONTENT['A']['a7']['title']}**")
-            ans_a7_1=st.radio(f"1. {QC_CONTENT['A']['a7']['qs'][0]}", ["Yes", "No"], horizontal=True, key="ans_a7_1")
-            ans_a7_2=st.radio(f"2. {QC_CONTENT['A']['a7']['qs'][1]}", ["Yes", "No"], horizontal=True, key="ans_a7_2")
-            ans_a7_name=st.text_input("Penerima Handover (Jika Yes)", key="ans_a7_name")
-            ans_a7_3=st.text_input(f"3. {QC_CONTENT['A']['a7']['qs'][2]}", key="ans_a7_3"); st.divider()
+            st.radio(f"1. {QC_CONTENT['A']['a7']['qs'][0]}", ["Yes", "No"], horizontal=True, key="ans_a7_1")
+            st.radio(f"2. {QC_CONTENT['A']['a7']['qs'][1]}", ["Yes", "No"], horizontal=True, key="ans_a7_2")
+            st.text_input("Nama Penerima Handover (Jika Ya)", key="ans_a7_name")
+            st.text_input(f"3. {QC_CONTENT['A']['a7']['qs'][2]}", key="ans_a7_3"); st.divider()
         if sw_a9:
             st.markdown(f"**A9. {QC_CONTENT['A']['a9']['title']}**")
-            ans_a9_1=st.radio(f"1. {QC_CONTENT['A']['a9']['qs'][0]}", ["Sudah check", "Belum"], horizontal=True, key="ans_a9_1")
-            ans_a9_2=st.text_input(f"2. {QC_CONTENT['A']['a9']['qs'][1]}", key="ans_a9_2")
-            ans_a9_3=st.text_input(f"3. {QC_CONTENT['A']['a9']['qs'][2]}", key="ans_a9_3")
-            ans_a9_4=st.text_input(f"4. {QC_CONTENT['A']['a9']['qs'][3]}", key="ans_a9_4")
-            ans_a9_5=st.text_input(f"5. {QC_CONTENT['A']['a9']['qs'][4]}", key="ans_a9_5"); st.divider()
+            st.radio(f"1. {QC_CONTENT['A']['a9']['qs'][0]}", ["Sudah check", "Belum"], horizontal=True, key="ans_a9_1")
+            st.text_input(f"2. {QC_CONTENT['A']['a9']['qs'][1]}", key="ans_a9_2")
+            st.text_input(f"3. {QC_CONTENT['A']['a9']['qs'][2]}", key="ans_a9_3")
+            st.text_input(f"4. {QC_CONTENT['A']['a9']['qs'][3]}", key="ans_a9_4")
+            st.text_input(f"5. {QC_CONTENT['A']['a9']['qs'][4]}", key="ans_a9_5"); st.divider()
         if sw_a5:
             st.markdown(f"**A5. {QC_CONTENT['A']['a5']['title']}**")
             for it in QC_CONTENT['A']['a5']['desc']: st.markdown(f"<span style='color:black;'>→ {it}</span>", unsafe_allow_html=True)
-            ans_a5=st.radio("Status A5", ["Done", "Not done"], key="ans_a5", horizontal=True, label_visibility="collapsed"); st.divider()
+            st.radio("Status A5", ["Done", "Not done"], key="ans_a5", horizontal=True, label_visibility="collapsed"); st.divider()
         if sw_a6:
             st.markdown(f"**A6. {QC_CONTENT['A']['a6']['title']}**")
-            ans_a6_1=st.radio(f"1. {QC_CONTENT['A']['a6']['qs'][0]}", ["Yes", "No"], horizontal=True, key="ans_a6_1")
-            ans_a6_2=st.radio(f"2. {QC_CONTENT['A']['a6']['qs'][1]}", ["Yes", "No"], horizontal=True, key="ans_a6_2")
+            st.radio(f"1. {QC_CONTENT['A']['a6']['qs'][0]}", ["Yes", "No"], horizontal=True, key="ans_a6_1")
+            st.radio(f"2. {QC_CONTENT['A']['a6']['qs'][1]}", ["Yes", "No"], horizontal=True, key="ans_a6_2")
     with cb:
         st.warning("🅱️ Check TL Reports")
         if sw_b1:
@@ -179,7 +179,7 @@ with st.container(border=True):
         st.info("🅰️ QC Direct Check")
         if st.session_state.get("sw_a4") and st.session_state.targets['a4'] > 0:
             st.markdown(f"**A4. {QC_CONTENT['A']['a4']['title']}**")
-            for it in QC_CONTENT['A']['a4']['check_items']: st.markdown(f"<span style='color:black; font-weight:500;'>→ {it}</span>", unsafe_allow_html=True)
+            for it in QC_CONTENT['A']['a4']['check_items']: st.markdown(f"<span style='color:black;'>→ {it}</span>", unsafe_allow_html=True)
             cols = st.columns(4)
             for i in range(st.session_state.targets['a4']):
                 with cols[i % 4]:
@@ -204,8 +204,8 @@ with st.container(border=True):
                 if st.session_state.get(f"active_{k}"):
                     with st.expander(f"Verifikasi {k.upper()} Step {len(logs)+1}", expanded=True):
                         res = {q: st.radio(f"→ {q}", ["O", "X"], key=f"q_{k}_{len(logs)}_{q}", horizontal=True) for q in QC_CONTENT['B'][k]['qs']}
-                        memo = st.text_input("Memo (Jika X)", key=f"m_{k}_{len(logs)}")
-                        if st.button("Save", key=f"sv_{k}"):
+                        memo = st.text_input("Catatan / Respon (Jika X)", key=f"m_{k}_{len(logs)}")
+                        if st.button("Simpan Data", key=f"sv_{k}"):
                             st.session_state.b_logs[k].append({"t": datetime.now(jakarta_tz).strftime("%H:%M"), "chk": res, "memo": memo})
                             del st.session_state[f"active_{k}"]; st.rerun()
                 st.divider()
@@ -227,10 +227,11 @@ with st.container(border=True):
                         if is_f: confirm_cancel_dialog("a8", i)
                         else: st.session_state.active_a8 = True; st.rerun()
             if st.session_state.get("active_a8"):
-                with st.expander(f"📝 Check Hour {len(st.session_state.a8_logs)+1}", expanded=True):
+                with st.expander(f"📝 Periksa Hour {len(st.session_state.a8_logs)+1}", expanded=True):
+                    st.info("Periksa kondisi barang jatuh di setiap area (O: Aman / X: Butuh Tindakan)")
                     a8_res = {ar: st.radio(f"→ {ar}", ["O", "X"], key=f"a8_{len(st.session_state.a8_logs)}_{ar}", horizontal=True) for ar in QC_CONTENT['A']['a8']['areas']}
-                    v_a8 = st.text_input("Barang segera dibereskan? (Type 'YES')", key="v_a8_inp")
-                    if v_a8.strip().upper() == "YES" and st.button("Simpan A8"):
+                    v_a8 = st.text_input("Barang segera dibereskan? (Ketik 'YES' untuk konfirmasi)", key="v_a8_inp")
+                    if v_a8.strip().upper() == "YES" and st.button("Konfirmasi & Simpan A8"):
                         st.session_state.a8_logs.append({"t": datetime.now(jakarta_tz).strftime("%H:%M"), "res": a8_res})
                         del st.session_state.active_a8; st.rerun()
     with cb:
@@ -249,59 +250,48 @@ with st.container(border=True):
                 if st.session_state.get(f"active_{k}"):
                     with st.expander(f"Verifikasi {k.upper()} Step {len(logs)+1}", expanded=True):
                         res = {q: st.radio(f"→ {q}", ["O", "X"], key=f"q_{k}_{len(logs)}_{q}", horizontal=True) for q in QC_CONTENT['B'][k]['qs']}
-                        memo = st.text_input("Memo (Jika X)", key=f"m_{k}_{len(logs)}")
-                        if st.button("Save", key=f"sv_{k}"):
+                        memo = st.text_input("Catatan / Respon (Jika X)", key=f"m_{k}_{len(logs)}")
+                        if st.button("Simpan Data", key=f"sv_{k}"):
                             st.session_state.b_logs[k].append({"t": datetime.now(jakarta_tz).strftime("%H:%M"), "chk": res, "memo": memo})
                             del st.session_state[f"active_{k}"]; st.rerun()
                 st.divider()
 
 main_memo = st.text_area("Input Catatan Tambahan (Khusus)", key="v_main_memo")
 
-# --- 6. [전송 및 저장] 텔레그램 메시지 빌더 (A-5, A-6 복구 및 양식 통합) ---
+# --- 6. [전송 및 저장] 텔레그램 리포트 & 구글 시트 엔진 통합 ---
 if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=True):
     try:
         tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n--------------------------------\n\n"
         
-        # [A 섹션: 루틴 리포트]
-        tg_msg += "📅 *Routine Others*\n"
-        # 100% 누락 방지: A-1 ~ A-9까지 명시적 순회
+        # [A 섹션 상세 투사]
+        tg_msg += "📅 *Rutinitas QC*\n"
         for k in ["a1","a2","a3","a5","a6","a7","a9"]:
             if globals().get(f"sw_{k}"):
                 info = QC_CONTENT['A'][k]
                 tg_msg += f"• {k.upper()}. {info['title']}\n"
-                
-                # A-1, A-2 전용 시간표시
-                if k in ["a1","a2"]:
+                if k in ["a1","a2"]: 
                     p_val = st.session_state.get(f"p_{k}", [])
                     tg_msg += f"({', '.join(p_val) if p_val else 'Belum'})\n"
 
-                # A-5 상세 복구 (Status Tes Steam)
                 if k == "a5":
-                    val = st.session_state.get("ans_a5", "-")
-                    tg_msg += f"  └ {val}\n"
-                
-                # 질문-답변 구조 (└ 적용)
+                    tg_msg += f"  └ {st.session_state.get('ans_a5', '-')}\n"
                 elif 'qs' in info:
                     for idx, q in enumerate(info['qs']):
                         val = st.session_state.get(f"ans_{k}_{idx+1}", "-")
-                        # A-7 수령인 이름 결합
                         if k == "a7" and idx == 1 and val == "Yes": val += f" (Penerima: {st.session_state.get('ans_a7_name','')})"
                         tg_msg += f"- {q}\n  └ {val}\n"
-                
                 tg_msg += "\n"
 
-        # [B-1 섹션: 여백 보존]
         if sw_b1:
             tg_msg += "--------------------------------\n\n👥 *B-1. Laporan Absensi*\n"
             for idx, tl in enumerate(TARGET_LABELS):
-                if idx == 1: tg_msg += "\n" # [복구] Awal과 Setelah 사이 여백
+                if idx == 1: tg_msg += "\n" # [수정] Spacing 적용
                 tg_msg += f"  {tl}\n"
                 for ar in QC_CONTENT['B']['b1']['areas']:
                     d = st.session_state.b1_data[tl][ar]
                     tg_msg += f"  - {ar}: {d['jam'] if d['jam'] else '00.00'} / {d['pax'] if d['pax'] else '0'} / ({d['st']})\n"
             tg_msg += "\n"
 
-        # [Interval Check Status]
         tg_msg += "⚡ *Interval Check Status*\n"
         if st.session_state.targets['a4'] > 0:
             tg_msg += f"• A-4. {QC_CONTENT['A']['a4']['title']}\n"
@@ -315,7 +305,6 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
                     tg_msg += f"  - H{idx+1} [{log['t']}] {a8_str}\n"
             tg_msg += "\n"
 
-        # [Detail Laporan Team Leader]
         tg_msg += "🅱️ *Detail Laporan Team Leader*\n"
         for k in B_KEYS:
             target = st.session_state.targets[k]
@@ -330,20 +319,24 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
 
         tg_msg += f"📝 *Catatan:* {main_memo if main_memo else '-'}\n🕒 *Update:* {current_time_full}"
         
-        # [Google Sheets 저장]
+        # [Google Sheets 저장 엔진]
         if gc:
             ss = gc.open_by_url('https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit')
             target_tab = f"{today_str}_{shift_label.split(' (')[0]}"
             try: worksheet = ss.worksheet(target_tab)
-            except: worksheet = ss.add_worksheet(title=target_tab, rows="100", cols="50")
-            header = [f"{full_today} {current_time_full}", pelapor, main_memo]
+            except: 
+                worksheet = ss.add_worksheet(title=target_tab, rows="100", cols="50")
+                st.info(f"✨ Sheet Baru Dibuat: {target_tab}")
+            
             all_v = worksheet.get_all_values()
             new_col = (len(all_v[1]) if len(all_v) > 1 else 1) + 1
             def get_c(n):
                 r = ""; 
                 while n > 0: n, rem = divmod(n - 1, 26); r = chr(65 + rem) + r
                 return r
+            header = [f"{full_today} {current_time_full}", pelapor, main_memo, str(st.session_state.a4_ts)]
             worksheet.update(f"{get_c(new_col)}2", [[v] for v in header])
+            st.success(f"✅ Data Berhasil Disimpan di Sheet: {target_tab}")
 
-        send_telegram(tg_msg); st.success("✅ Laporan Full Berhasil Dikirim!")
+        send_telegram(tg_msg); st.success("✅ Laporan Berhasil Dikirim ke Telegram!")
     except Exception as e: st.error(f"🚨 Error: {e}")
