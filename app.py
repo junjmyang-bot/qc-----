@@ -6,11 +6,11 @@ import pytz
 import requests
 from google.oauth2.service_account import Credentials
 
-# --- 1. 기본 설정 및 시간 (자카르타 기준) ---
+# --- 1. Konfigurasi Dasar & Waktu (WIB) ---
 st.set_page_config(page_title="SOI QC SMART SYSTEM", layout="wide", page_icon="🏭")
 jakarta_tz = pytz.timezone('Asia/Jakarta')
 now_jakarta = datetime.now(jakarta_tz)
-today_str = now_jakarta.strftime('%m-%d')
+today_str = now_jakarta.strftime('%m-%d') # 시트 이름용 (02-24)
 full_today = now_jakarta.strftime('%Y-%m-%d')
 current_time_full = now_jakarta.strftime('%H:%M:%S')
 
@@ -19,7 +19,7 @@ st.markdown("<style>div[data-testid='stStatusWidget']{display:none!important;}.m
 TELEGRAM_TOKEN = st.secrets["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 
-# 🌟 구글 시트 엔진
+# 🌟 구글 시트 엔진 연동
 @st.cache_resource
 def get_gc_client():
     try:
@@ -33,7 +33,7 @@ def get_gc_client():
 
 gc = get_gc_client()
 
-# --- 2. 데이터 정의 ---
+# --- 2. [데이터 정의] 19개 항목 상세 가이드 ---
 QC_CONTENT = {
     "A": {
         "a1": {"title": "Cek Stok BB Sudah steam", "qs": ["Sisa BB sisa shift sebelumya?", "Jumlah bb steam 충분?", "Respon if kurang?"]},
@@ -43,7 +43,7 @@ QC_CONTENT = {
         "a9": {"title": "SISA BARANG", "qs": ["Check MAX 1 PACK", "Sisa shift prev?", "Sudah dibereskan?", "Simpan sisa?", "Handover sisa?"]},
         "a4": {"title": "Laporan QC pada Tablet", "check_items": ["Kebersihan harian", "Kontaminan kupas", "Kontaminan packing"]},
         "a5": {"title": "Status Tes Steam", "desc": ["Maksimal selesai jam 13.00 완료", "Update laporan 30분 마다 보고", "Cek sampel & 보고서"]},
-        "a6": {"title": "List BB butuh kirim", "qs": ["List kirim jam 12.00?", "Kordinasi gudang?"]},
+        "a6": {"title": "List BB butuh kirim", "qs": ["List kirim jam 12.00 sudah ada?", "Kordinasi gudang?"]},
         "a8": {"title": "Status Barang Jatuh", "areas": ["steam", "kupas", "dry", "packing", "cuci"]}
     },
     "B": {
@@ -69,7 +69,7 @@ if 'a4_ts' not in st.session_state: st.session_state.a4_ts = []
 if 'a8_logs' not in st.session_state: st.session_state.a8_logs = []
 if 'targets' not in st.session_state: st.session_state.targets = {k: 0 for k in GRID_KEYS}
 TARGET_LABELS = ["Awal Masuk", "Setelah Istirahat"]
-if 'b1_data' not in st.session_state:
+if 'b1_data' not in st.session_state or list(st.session_state.b1_data.keys()) != TARGET_LABELS:
     st.session_state.b1_data = {t: {a: {"jam": "", "pax": "", "st": "O"} for a in QC_CONTENT['B']['b1']['areas']} for t in TARGET_LABELS}
 
 def get_prog_bar(val_len, goal):
@@ -88,18 +88,24 @@ def confirm_cancel_dialog(key, idx):
         else: st.session_state.b_logs[key] = st.session_state.b_logs[key][:idx]
         st.rerun()
 
-# --- 4. Sidebar: Pengaturan ---
+# --- 4. Sidebar: [수정] 명칭 복구 로직 적용 ---
 with st.sidebar:
     st.header("⚙️ 리포트 세부 설정")
     with st.expander("📅 Visibilitas Rutinitas Shift", expanded=True):
-        sw_a1=st.toggle("A-1", True); sw_a2=st.toggle("A-2", True); sw_a3=st.toggle("A-3", True)
-        sw_a7=st.toggle("A-7", True); sw_a9=st.toggle("A-9", True); st.divider()
-        sw_a5=st.toggle("A-5", True); sw_a6=st.toggle("A-6", True); st.divider()
-        sw_b1=st.toggle("B-1 Absensi", True)
+        sw_a1=st.toggle(f"A-1 {QC_CONTENT['A']['a1']['title']}", True)
+        sw_a2=st.toggle(f"A-2 {QC_CONTENT['A']['a2']['title']}", True)
+        sw_a3=st.toggle(f"A-3 Handover Masuk", True)
+        sw_a7=st.toggle(f"A-7 Rencana & Handover", True)
+        sw_a9=st.toggle(f"A-9 Sisa Barang", True); st.divider()
+        sw_a5=st.toggle(f"A-5 {QC_CONTENT['A']['a5']['title']}", True)
+        sw_a6=st.toggle(f"A-6 List Kirim BB", True); st.divider()
+        sw_b1=st.toggle(f"B-1 {QC_CONTENT['B']['b1']['title']}", True)
 
     with st.expander("⚡ 30분 / ⏰ 1시간 목표 설정", expanded=False):
         for k in GRID_KEYS:
-            st.session_state[f"sw_{k}"] = st.toggle(f"Aktif {k.upper()}", True, key=f"tog_{k}")
+            # [복구 핵심] QC_CONTENT에서 정확한 제목을 불러옴
+            info = QC_CONTENT['A' if 'a' in k else 'B'][k]
+            st.session_state[f"sw_{k}"] = st.toggle(f"{k.upper()} {info['title']}", True, key=f"tog_{k}")
             if st.session_state[f"sw_{k}"]:
                 st.session_state.targets[k] = st.number_input(f"Target {k.upper()}", 0, 48, st.session_state.targets[k], key=f"inp_{k}")
 
@@ -116,13 +122,13 @@ with st.container(border=True):
         st.info("🅰️ QC Direct Check")
         if sw_a1:
             st.markdown(f"**A1. {QC_CONTENT['A']['a1']['title']}**")
-            st.pills("Waktu A1", TARGET_LABELS, selection_mode="multi", key="p_a1")
+            p_a1 = st.pills("Waktu Cek A1", TARGET_LABELS, selection_mode="multi", key="p_a1")
             st.text_input(f"1. {QC_CONTENT['A']['a1']['qs'][0]}", key="ans_a1_1")
             st.text_input(f"2. {QC_CONTENT['A']['a1']['qs'][1]}", key="ans_a1_2")
             st.text_input(f"3. {QC_CONTENT['A']['a1']['qs'][2]}", key="ans_a1_3"); st.divider()
         if sw_a2:
             st.markdown(f"**A2. {QC_CONTENT['A']['a2']['title']}**")
-            st.pills("Waktu A2", TARGET_LABELS, selection_mode="multi", key="p_a2")
+            p_a2 = st.pills("Waktu Cek A2", TARGET_LABELS, selection_mode="multi", key="p_a2")
             st.text_input(f"1. {QC_CONTENT['A']['a2']['qs'][0]}", key="ans_a2_1")
             st.text_input(f"2. {QC_CONTENT['A']['a2']['qs'][1]}", key="ans_a2_2")
             st.text_input(f"3. {QC_CONTENT['A']['a2']['qs'][2]}", key="ans_a2_3"); st.divider()
@@ -195,6 +201,7 @@ for tit, a_ks, b_ks in [("⚡ Interval 30 Menit", ["a4"], ["b3","b4","b5","b9"])
             for k in b_ks:
                 if st.session_state.get(f"sw_{k}") and st.session_state.targets[k] > 0:
                     st.markdown(f"**{k.upper()}. {QC_CONTENT['B'][k]['title']}**")
+                    for q_ in QC_CONTENT['B'][k]['qs']: st.markdown(f"<span style='color:black; font-size:0.85rem;'>✓ {q_}</span>", unsafe_allow_html=True)
                     cols = st.columns(4); logs = st.session_state.b_logs[k]
                     for i in range(st.session_state.targets[k]):
                         with cols[i % 4]:
@@ -210,65 +217,68 @@ for tit, a_ks, b_ks in [("⚡ Interval 30 Menit", ["a4"], ["b3","b4","b5","b9"])
                                 st.session_state.b_logs[k].append({"t": datetime.now(jakarta_tz).strftime("%H:%M"), "chk": res, "memo": memo})
                                 del st.session_state[f"active_{k}"]; st.rerun()
 
-main_memo = st.text_area("Catatan Tambahan", key="v_main_memo")
+main_memo = st.text_area("Catatan Tambahan (Khusus)", key="v_main_memo")
 
-# --- 6. [전송 로직] 데이터 누락 원천 봉쇄 ---
+# --- 6. [전송 및 저장] 텔레그램 리포트 & 구글 시트 엔진 통합 ---
 if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=True):
     try:
+        # [1] 텔레그램 리포트 빌더 (질문-답변 리스트 상세 투사)
         tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n--------------------------------\n\n"
         
-        # [A 섹션 상세 투사]
         tg_msg += "📅 *Routine Others*\n"
         for k in ["a1","a2","a3","a7","a9"]:
             if globals().get(f"sw_{k}"):
                 info = QC_CONTENT['A'][k]
                 tg_msg += f"• {k.upper()}. {info['title']}\n"
-                if k in ["a1","a2"]: tg_msg += f"({', '.join(st.session_state.get(f'p_{k}', []))})\n"
+                if k in ["a1","a2"]: 
+                    p_val = st.session_state.get(f"p_{k}", [])
+                    tg_msg += f"({', '.join(p_val) if p_val else 'Belum'})\n"
                 for idx, q in enumerate(info['qs']):
                     val = st.session_state.get(f"ans_{k}_{idx+1}", "-")
+                    if k == "a7" and idx == 1 and val == "Yes":
+                        name_val = st.session_state.get("ans_a7_name", "")
+                        val += f" (Penerima: {name_val})" if name_val else ""
                     tg_msg += f"- {q}\n  └ {val}\n"
                 tg_msg += "\n"
 
-        # [B-1 섹션 Spacing]
         if sw_b1:
             tg_msg += "--------------------------------\n\n👥 *B-1. Laporan Absensi*\n"
             for idx, tl in enumerate(TARGET_LABELS):
-                if idx == 1: tg_msg += "\n" # 한 칸 띄우기
+                if idx == 1: tg_msg += "\n" # [복구] Setelah Istirahat 한 칸 띄우기
                 tg_msg += f"  [{tl}]\n"
                 for ar in QC_CONTENT['B']['b1']['areas']:
                     d = st.session_state.b1_data[tl][ar]
                     tg_msg += f"  - {ar}: {d['jam'] if d['jam'] else '00.00'} / {d['pax'] if d['pax'] else '0'} / ({d['st']})\n"
 
-        # [Interval & Progress]
-        tg_msg += "\n⚡ *Interval Check*\n"
-        if st.session_state.targets['a4'] > 0:
-            tg_msg += f"• A-4: {get_prog_bar(len(st.session_state.a4_ts), st.session_state.targets['a4'])} ({len(st.session_state.a4_ts)}/{st.session_state.targets['a4']})\n"
-        
-        for k in B_KEYS:
+        tg_msg += "\n⚡ *Interval Status*\n"
+        for k in GRID_KEYS:
             target = st.session_state.targets[k]
             if st.session_state.get(f"sw_{k}") and target > 0:
-                logs = st.session_state.b_logs[k]
+                logs = st.session_state.b_logs[k] if 'b' in k else (st.session_state.a4_ts if k=="a4" else st.session_state.a8_logs)
                 tg_msg += f"• {k.upper()}: {get_prog_bar(len(logs), target)} ({len(logs)}/{target})\n"
-                for l in logs:
-                    chks = " / ".join([f"({v})" for v in l['chk'].values()])
-                    tg_msg += f"  - {l['t']} / {chks} {l['memo']}\n"
 
-        # 🌟 구글 시트 엔진 (자동 생성)
+        tg_msg += f"\n📝 *Catatan:* {main_memo if main_memo else '-'}\n🕒 *Update:* {current_time_full}"
+        
+        # [2] 구글 시트 저장 (날짜_시프트별 자동 생성 엔진)
         if gc:
             ss = gc.open_by_url('https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit')
-            target_tab = f"{today_str}_{shift_label.split(' (')[0]}"
+            clean_shift = shift_label.split(" (")[0]
+            target_tab = f"{today_str}_{clean_shift}"
             try: worksheet = ss.worksheet(target_tab)
-            except: worksheet = ss.add_worksheet(title=target_tab, rows="100", cols="50")
+            except: 
+                worksheet = ss.add_worksheet(title=target_tab, rows="100", cols="50")
+                st.info(f"✨ Sheet Baru: {target_tab}")
             
-            # 기록 데이터 (심플 버전)
-            header = [f"{full_today} {current_time_full}", pelapor, main_memo]
             all_v = worksheet.get_all_values()
             new_col = (len(all_v[1]) if len(all_v) > 1 else 1) + 1
             def get_c(n):
                 r = ""
                 while n > 0: n, rem = divmod(n - 1, 26); r = chr(65 + rem) + r
                 return r
+            header = [f"{full_today} {current_time_full}", pelapor, main_memo, str(st.session_state.a4_ts)]
             worksheet.update(f"{get_c(new_col)}2", [[v] for v in header])
+            st.success(f"✅ Data Tersimpan ke Sheet: {target_tab}")
 
-        send_telegram(tg_msg); st.success("✅ Laporan Berhasil Dikirim (Full & Clean)!")
+        # [3] 텔레그램 발송
+        send_telegram(tg_msg); st.success("✅ Laporan Berhasil Dikirim!")
     except Exception as e: st.error(f"🚨 Error: {e}")
