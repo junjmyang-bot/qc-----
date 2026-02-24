@@ -15,8 +15,8 @@ TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 # --- 2. [Data Konten] Panduan Detail & Pertanyaan 19 Item ---
 QC_CONTENT = {
     "A": {
-        "a1": {"title": "Cek Stok BB Sudah steam", "qs": ["Sisa BB sisa shift sebelumya?", "Jumlah bb steam 충분?", "Respon if kurang?"]},
-        "a2": {"title": "Cek Stok BS (Sudah defros)", "qs": ["Sudah defros berapa?", "Estimasi 작업량?", "Jam tambah defros?"]},
+        "a1": {"title": "Cek Stok BB Sudah steam", "qs": ["Sisa BB sisa shift sebelumya?", "Jumlah bb steam cukup?", "Respon if kurang?"]},
+        "a2": {"title": "Cek Stok BS (Sudah defros)", "qs": ["Sudah defros berapa?", "Estimasi jumlah kerja?", "Jam tambah defros?"]},
         "a3": {"title": "Handover shift 전", "qs": ["Sudah dapat handover?", "Produksi sesuai rencana?"]},
         "a7": {"title": "Handover & rencana", "qs": ["Rencana sudah dibuat?", "Handover sudah dibuat?", "Sudah baca data stok?"]},
         "a9": {"title": "SISA BARANG", "qs": ["Check MAX 1 PACK", "Sisa shift prev?", "Sudah dibereskan?", "Simpan sisa?", "Handover sisa?"]},
@@ -118,7 +118,7 @@ with st.container(border=True):
             ans_a2_2=st.text_input(f"2. {QC_CONTENT['A']['a2']['qs'][1]}", key="a2_2")
             ans_a2_3=st.text_input(f"3. {QC_CONTENT['A']['a2']['qs'][2]}", key="a2_3"); st.divider()
         if sw_a3:
-            st.markdown("**A3. Handover shift 전**")
+            st.markdown("**A3. Handover shift sebelum**")
             ans_a3_1=st.radio(f"1. {QC_CONTENT['A']['a3']['qs'][0]}", ["Yes", "No"], horizontal=True, key="a3_1")
             ans_a3_2=st.radio(f"2. {QC_CONTENT['A']['a3']['qs'][1]}", ["Yes", "No"], horizontal=True, key="a3_2"); st.divider()
         if sw_a7:
