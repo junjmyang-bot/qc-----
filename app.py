@@ -3,33 +3,30 @@ from datetime import datetime
 import gspread
 import json
 import pytz 
-import requests  # 텔레그램 전송용 추가
+import requests
 from google.oauth2.service_account import Credentials
 
-# --- 1. 앱 세팅 및 자카르타 시간 설정 ---
-st.set_page_config(page_title="SOI QC HIGH-SPEED", layout="wide", page_icon="🏭")
-
+# --- 1. 기본 설정 및 보안 키 ---
+st.set_page_config(page_title="SOI QC SMART SYSTEM", layout="wide", page_icon="🏭")
 jakarta_tz = pytz.timezone('Asia/Jakarta')
 now_jakarta = datetime.now(jakarta_tz)
 today_str = now_jakarta.strftime('%m-%d')
 full_today = now_jakarta.strftime('%Y-%m-%d')
 current_time_full = now_jakarta.strftime('%H:%M')
 
-# 텔레그램 설정 (Secrets에서 불러오기)
 TELEGRAM_TOKEN = st.secrets["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 
-# --- [추가] 항목별 가이드라인 데이터 (준모님의 요청사항) ---
-QC_GUIDES = {
-    "a1": "✅ Sisa BB shift sebelumnya (ton)\n✅ Cukup untuk shift sekarang/next?",
-    "a4": "✅ Update 30 menit sekali\n✅ Kebersihan & Kontaminan Kupas/Packing",
-    "a8": "✅ Check 1 jam sekali\n✅ Max 10 nampan di timbangan\n✅ Segera bereskan",
-    "b8": "✅ Sesuai produk\n✅ Cara nata & Setting mesin benar",
-    "b10": "✅ 1 jam sekali\n✅ Status mesin (sebelum istirahat/pulang)"
+# --- 2. 항목별 상세 가이드라인 ---
+GUIDE_MAP = {
+    "a1": "✅ Sisa BB shift sebelumnya (ton)\n✅ Cukup untuk shift 지금/다음?",
+    "a4": "✅ Update 30분 마다\n✅ Kebersihan & Kontaminan Kupas/Packing",
+    "a8": "✅ 1시간 마다 체크\n✅ 바닥 물건 즉시 정리 (Max 10 nampan)",
+    "b8": "✅ 제품 일치 확인\n✅ Cara nata & Machine Setting 확인",
+    "b10": "✅ 1시간 마다\n✅ Status Mesin (Istirahat & Pulang 전)"
 }
 
-st.markdown("<style>div[data-testid='stStatusWidget']{display:none!important;}.main{background-color:white!important;}</style>", unsafe_allow_html=True)
-
+# --- 3. 구글 시트 연결 ---
 @st.cache_resource
 def get_gc_client():
     try:
@@ -44,7 +41,7 @@ def get_gc_client():
 
 gc = get_gc_client()
 
-# --- 2. 데이터 저장소 및 로직 ---
+# --- 4. 데이터 로직 (High-Speed) ---
 ITEMS = ["a4","a5","b3","b4","b5","b9","a8","b2","b6","b7","b8","b10","a1","a2","a3","a6","a7","a9","b1"]
 if 'qc_store' not in st.session_state:
     st.session_state.qc_store = {k: [] for k in ITEMS}
@@ -63,13 +60,12 @@ def get_prog_bar(val, goal):
     perc = int((len(val)/goal)*100) if goal > 0 else 0
     return f"{'■' * (perc // 10)}{'□' * (10 - (perc // 10))} ({perc}%)"
 
-# [추가] 텔레그램 전송 함수
 def send_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
     requests.post(url, data=payload)
 
-# --- 3. 사이드바 설정 ---
+# --- 5. 사이드바 설정 ---
 with st.sidebar:
     st.header("⚙️ 리포트 세부 설정")
     with st.expander("⚡ 30분 단위", expanded=True):
@@ -95,19 +91,18 @@ with st.sidebar:
         sw_a9=st.toggle("A-9 루틴",True); g_a9=st.number_input("A-9",1,5,1)
         sw_b1=st.toggle("B-1 루틴",True); g_b1=st.number_input("B-1",1,5,2)
 
-# --- 4. 메인 UI ---
-st.title("🏭 QC 모니터링 시스템")
+# --- 6. 메인 UI ---
+st.title("🏭 SOI QC 모니터링 시스템")
 c1, c2 = st.columns(2)
 with c1: 
     shift_label = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"])
 with c2: 
-    pelapor = st.selectbox("담당자 (PELAPOR)", ["Diana", "Uyun", "Rossa", "Dini", "JUNMO YANG"])
+    pelapor = st.selectbox("PELAPOR", ["Diana", "Uyun", "Rossa", "Dini", "JUNMO YANG"])
 
-# [개선] draw 함수에 가이드라인 표시 추가
 def draw(label, key, goal, show):
     if show:
         st.markdown(f"**{label}**")
-        if key in QC_GUIDES: st.caption(f"💡 {QC_GUIDES[key]}") # 가이드라인 표시
+        if key in GUIDE_MAP: st.caption(f"💡 {GUIDE_MAP[key]}")
         v = st.session_state.v_map[key]
         st.pills(label, [str(i) for i in range(1, goal+1)], key=f"u_{key}_{v}", on_change=fast_cascade, args=(key,), selection_mode="multi", label_visibility="collapsed", default=st.session_state.qc_store[key])
         return st.text_input(f"{label} 코멘트", key=f"m_{key}")
@@ -130,7 +125,7 @@ with st.container(border=True):
     def routine(label, g, show, key):
         if show:
             st.markdown(f"**{label}**")
-            if key in QC_GUIDES: st.caption(f"💡 {QC_GUIDES[key]}") # 가이드라인 표시
+            if key in GUIDE_MAP: st.caption(f"💡 {GUIDE_MAP[key]}")
             p = st.pills(label, ["Awal", "Istirahat", "Jam 12", "Handover", "Closing"][:g], selection_mode="multi", key=f"u_{key}")
             return p, st.text_input(f"{label} 메모", key=f"m_{key}")
         return [], ""
@@ -139,25 +134,23 @@ with st.container(border=True):
     p_a7,m_a7=routine("A-7 Rencana",g_a7,sw_a7,"a7"); p_a9,m_a9=routine("A-9 Sisa Barang",g_a9,sw_a9,"a9")
     p_b1,m_b1=routine("B-1 Absensi",g_b1,sw_b1,"b1")
 
-st.subheader("📝 종합 메모")
-new_memo = st.text_area("특이사항 입력", key="main_memo")
+new_memo = st.text_area("종합 특이사항 입력", key="main_memo")
 
-if st.button("💾 구글 시트에 업데이트 & 텔레그램 전송", use_container_width=True):
+# --- 7. 통합 저장 및 전송 버튼 ---
+if st.button("💾 구글 시트 저장 & 텔레그램 전송", type="primary", use_container_width=True):
     if gc:
         try:
+            # [1] 시트 준비
             clean_shift = shift_label.split(" (")[0]
             target_tab_name = f"{today_str}_{clean_shift}"
             SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit'
             ss = gc.open_by_url(SHEET_URL)
+            try: worksheet = ss.worksheet(target_tab_name)
+            except: worksheet = ss.add_worksheet(title=target_tab_name, rows="100", cols="50")
             
-            try:
-                worksheet = ss.worksheet(target_tab_name)
-            except:
-                worksheet = ss.add_worksheet(title=target_tab_name, rows="100", cols="50")
-            
+            # [2] 구글 시트 데이터 (기존 라벨/페이로드 유지)
             header_title = f"{full_today} | {pelapor} | {current_time_full}"
             def cv(v): return ", ".join(v) if isinstance(v, list) else v
-            
             labels = ["▶ 보고서 정보", "담당자", "", "", "▶ 30분 단위", "A-4 QC", "A-4 코멘트", "", "A-5 Steam", "A-5 코멘트", "", "B-3 Kupas", "B-3 코멘트", "", "B-4 Packing", "B-4 코멘트", "", "B-5 Hasil", "B-5 코멘트", "", "B-9 Kondisi", "B-9 코멘트", "", "▶ 1시간 단위", "A-8 Barang", "A-8 코멘트", "", "B-2 Steam", "B-2 코멘트", "", "B-6 Giling", "B-6 코멘트", "", "B-7 Steril", "B-7 코멘트", "", "B-8 Potong", "B-8 코멘트", "", "B-10 Dry", "B-10 코멘트", "", "▶ 시프트 루틴", "A-1 Stok", "A-1 메모", "", "A-2 BS", "A-2 메모", "", "A-3 Handover", "A-3 메모", "", "A-6 List", "A-6 메모", "", "A-7 Rencana", "A-7 메모", "", "A-9 Sisa", "A-9 메모", "", "B-1 Absen", "B-1 메모", "", "▶ 종합 메모", "기록 시각"]
             payload = [header_title, pelapor, "", "", "", get_prog_bar(st.session_state.qc_store["a4"], g_a4) if sw_a4 else "-", m_a4, "", get_prog_bar(st.session_state.qc_store["a5"], g_a5) if sw_a5 else "-", m_a5, "", get_prog_bar(st.session_state.qc_store["b3"], g_b3) if sw_b3 else "-", m_b3, "", get_prog_bar(st.session_state.qc_store["b4"], g_b4) if sw_b4 else "-", m_b4, "", get_prog_bar(st.session_state.qc_store["b5"], g_b5) if sw_b5 else "-", m_b5, "", get_prog_bar(st.session_state.qc_store["b9"], g_b9) if sw_b9 else "-", m_b9, "", "", get_prog_bar(st.session_state.qc_store["a8"], g_a8) if sw_a8 else "-", m_a8, "", get_prog_bar(st.session_state.qc_store["b2"], g_b2) if sw_b2 else "-", m_b2, "", get_prog_bar(st.session_state.qc_store["b6"], g_b6) if sw_b6 else "-", m_b6, "", get_prog_bar(st.session_state.qc_store["b7"], g_b7) if sw_b7 else "-", m_b7, "", get_prog_bar(st.session_state.qc_store["b8"], g_b8) if sw_b8 else "-", m_b8, "", get_prog_bar(st.session_state.qc_store["b10"], g_b10) if sw_b10 else "-", m_b10, "", "", cv(p_a1) if sw_a1 else "-", m_a1, "", cv(p_a2) if sw_a2 else "-", m_a2, "", cv(p_a3) if sw_a3 else "-", m_a3, "", cv(p_a6) if sw_a6 else "-", m_a6, "", cv(p_a7) if sw_a7 else "-", m_a7, "", cv(p_a9) if sw_a9 else "-", m_a9, "", cv(p_b1) if sw_b1 else "-", m_b1, "", new_memo, current_time_full]
 
@@ -171,14 +164,39 @@ if st.button("💾 구글 시트에 업데이트 & 텔레그램 전송", use_con
             worksheet.update("B2", [[v] for v in labels])
             worksheet.update(f"{get_c(new_idx)}2", [[v] for v in payload])
 
-            # 🌟 [신규] 텔레그램 메시지 생성 및 발송
-            tg_text = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n\n"
-            tg_text += f"*A-4:* {get_prog_bar(st.session_state.qc_store['a4'], g_a4)}\n"
-            tg_text += f"*B-8:* {get_prog_bar(st.session_state.qc_store['b8'], g_b8)}\n"
-            tg_text += f"📝 *Memo:* {new_memo}"
-            send_telegram(tg_text)
+            # [3] 텔레그램 상세 메시지 빌더
+            tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n"
+            tg_msg += "--------------------------------\n\n"
             
-            st.success(f"✅ [{target_tab_name}] 저장 및 텔레그램 전송 완료!")
-        except Exception as e:
-            st.error(f"🚨 에러: {e}")
+            # 30분 단위 요약
+            tg_msg += "*⚡ 30 Menit*\n"
+            m30_items = [("A-4", "a4", g_a4, sw_a4, m_a4), ("A-5", "a5", g_a5, sw_a5, m_a5), ("B-3", "b3", g_b3, sw_b3, m_b3), ("B-4", "b4", g_b4, sw_b4, m_b4), ("B-5", "b5", g_b5, sw_b5, m_b5), ("B-9", "b9", g_b9, sw_b9, m_b9)]
+            for label, key, goal, sw, m in m30_items:
+                if sw:
+                    tg_msg += f"• {label}: {get_prog_bar(st.session_state.qc_store[key], goal)}\n"
+                    if m: tg_msg += f"  └ 💬 {m}\n"
+
+            # 1시간 단위 요약
+            tg_msg += "\n*⏰ 1 Jam*\n"
+            m1h_items = [("A-8", "a8", g_a8, sw_a8, m_a8), ("B-2", "b2", g_b2, sw_b2, m_b2), ("B-6", "b6", g_b6, sw_b6, m_b6), ("B-7", "b7", g_b7, sw_b7, m_b7), ("B-8", "b8", g_b8, sw_b8, m_b8), ("B-10", "b10", g_b10, sw_b10, m_b10)]
+            for label, key, goal, sw, m in m1h_items:
+                if sw:
+                    tg_msg += f"• {label}: {get_prog_bar(st.session_state.qc_store[key], goal)}\n"
+                    if m: tg_msg += f"  └ 💬 {m}\n"
+
+            # 루틴 요약
+            tg_msg += "\n*📅 Routine*\n"
+            rt_items = [("A-1", "a1", sw_a1, p_a1, m_a1), ("A-2", "a2", sw_a2, p_a2, m_a2), ("A-3", "a3", sw_a3, p_a3, m_a3), ("A-6", "a6", sw_a6, p_a6, m_a6), ("A-7", "a7", sw_a7, p_a7, m_a7), ("A-9", "a9", sw_a9, p_a9, m_a9), ("B-1", "b1", sw_b1, p_b1, m_b1)]
+            for label, key, sw, checks, m in rt_items:
+                if sw:
+                    tg_msg += f"• {label}: {', '.join(checks) if checks else '-'}\n"
+                    if m: tg_msg += f"  └ 💬 {m}\n"
+            
+            tg_msg += f"\n📝 *Memo:* {new_memo}"
+            
+            # [4] 발송
+            send_telegram(tg_msg)
+            st.success(f"✅ [{target_tab_name}] 저장 및 텔레그램 상세 보고 완료!")
+            
+        except Exception as e: st.error(f"🚨 에러: {e}")
     else: st.error("시트 연결 실패")
