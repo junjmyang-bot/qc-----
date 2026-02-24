@@ -39,7 +39,7 @@ QC_CONTENT = {
     }
 }
 
-# --- 3. Inisialisasi Session State (Error Prevention) ---
+# --- 3. Inisialisasi Session State ---
 B_KEYS = ["b2","b3","b4","b5","b6","b7","b8","b9","b10"]
 GRID_KEYS = ["a4", "a8"] + B_KEYS
 
@@ -67,10 +67,9 @@ def confirm_cancel_dialog(key, idx):
         else: st.session_state.b_logs[key] = st.session_state.b_logs[key][:idx]
         st.rerun()
 
-# --- 4. Sidebar: Pengaturan (Manual Targets & Toggles) ---
+# --- 4. Sidebar: Pengaturan ---
 with st.sidebar:
     st.header("⚙️ Pengaturan Laporan")
-    
     with st.expander("📅 Visibilitas Rutinitas Shift", expanded=True):
         sw_a1=st.toggle(f"A-1 Stok BB Steam", True)
         sw_a2=st.toggle(f"A-2 Stok BS Defros", True)
@@ -78,7 +77,8 @@ with st.sidebar:
         sw_a7=st.toggle("A-7 Rencana & Handover", True)
         sw_a9=st.toggle("A-9 Sisa Barang", True)
         st.divider(); st.info("📦 Bahan Baku")
-        sw_a5=st.toggle(f"A-5 Tes Steam", True); sw_a6=st.toggle("A-6 List Kirim BB", True)
+        sw_a5=st.toggle(f"A-5 Tes Steam", True)
+        sw_a6=st.toggle("A-6 List Kirim BB", True) # [복구 대상]
         st.divider(); st.caption("🅱️ Laporan Team Leader")
         sw_b1=st.toggle("B-1 Absensi Laporan", True)
 
@@ -94,7 +94,7 @@ with st.sidebar:
             if st.session_state[f"sw_{k}"]:
                 st.session_state.targets[k] = st.number_input(f"Target {k.upper()}", 0, 24, st.session_state.targets[k], key=f"inp_{k}")
 
-# --- 5. Main UI: A/B Sections ---
+# --- 5. Main UI ---
 st.title("🏭 SOI QC MONITORING SYSTEM")
 ch1, ch2 = st.columns(2)
 with ch1: shift_label = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift Tengah"])
@@ -119,10 +119,22 @@ with st.container(border=True):
             st.markdown("**A7. Handover & Rencana**")
             ans_a7_1=st.radio(f"-> {QC_CONTENT['A']['a7']['qs'][0]}", ["Yes", "No"], horizontal=True, key="a7_1")
             ans_a7_3=st.text_area("Data Stok BB", key="a7_3"); st.divider()
+        if sw_a9:
+            st.markdown("**A9. Sisa Barang**")
+            ans_a9_1=st.radio(f"-> {QC_CONTENT['A']['a9']['qs'][0]}", ["Sudah check", "Belum"], horizontal=True, key="a9_1"); st.divider()
+
+        st.markdown("##### 📦 Bahan Baku")
         if sw_a5:
             st.markdown(f"**A5. {QC_CONTENT['A']['a5']['title']}**")
             for it in QC_CONTENT['A']['a5']['desc']: st.markdown(f"<span style='color:black; font-weight:500;'>→ {it}</span>", unsafe_allow_html=True)
             ans_a5=st.radio("Status A5", ["Done", "Not done"], key="a5_st", horizontal=True, label_visibility="collapsed"); st.divider()
+        # [A-6 복구 코드]
+        if sw_a6:
+            st.markdown(f"**A6. {QC_CONTENT['A']['a6']['title']}**")
+            ans_a6_1=st.radio(f"-> {QC_CONTENT['A']['a6']['qs'][0]}", ["Yes", "No"], horizontal=True, key="a6_1")
+            ans_a6_2=st.radio(f"-> {QC_CONTENT['A']['a6']['qs'][1]}", ["Yes", "No"], horizontal=True, key="a6_2")
+            st.divider()
+
     with cb:
         st.warning("🅱️ Check TL Reports")
         if sw_b1:
@@ -137,10 +149,9 @@ with st.container(border=True):
                         with r3: st.session_state.b1_data[tl][ar]['st']=st.radio(f"S/T {ar} {tl}", ["O", "X"], key=f"b1_{tl}_{ar}_s", horizontal=True)
 
 # [Interval Sections - Error Fixed line 125]
-for tit, keys, a_ks, b_ks in [("⚡ Interval 30 Menit", ["a4","b3","b4","b5","b9"], ["a4"], ["b3","b4","b5","b9"]), 
-                                  ("⏰ Interval 1 Jam", ["a8","b2","b6","b7","b8","b10"], ["a8"], ["b2","b6","b7","b8","b10"])]:
+for tit, keys, a_ks, b_ks in [("⚡ Interval 30 Menit", ["a4","b3","b4","b5","b9"], ["a4"], ["b3","b4","b5","b9"]), ("⏰ Interval 1 Jam", ["a8","b2","b6","b7","b8","b10"], ["a8"], ["b2","b6","b7","b8","b10"])]:
     st.subheader(tit)
-    with st.container(border=True): # Line 125 Fixed: split with subheader
+    with st.container(border=True): # 줄바꿈으로 SyntaxError 해결
         ca, cb = st.columns(2)
         with ca:
             st.info("🅰️ QC Direct Check")
@@ -163,7 +174,7 @@ for tit, keys, a_ks, b_ks in [("⚡ Interval 30 Menit", ["a4","b3","b4","b5","b9
                                     st.rerun()
                     if k == "a8" and st.session_state.get("active_a8"):
                         with st.expander("Verifikasi A-8", expanded=True):
-                            if st.text_input("Barang segera dibereskan? (YES)", key="a8_v").strip().upper() == "YES" and st.button("Konfirmasi"):
+                            if st.text_input("Barang segera dibereskan? (Type 'YES')", key="a8_v").strip().upper() == "YES" and st.button("Confirm"):
                                 st.session_state.a8_logs.append({"t": datetime.now(jakarta_tz).strftime("%H:%M")})
                                 del st.session_state.active_a8; st.rerun()
         with cb:
@@ -191,30 +202,32 @@ for tit, keys, a_ks, b_ks in [("⚡ Interval 30 Menit", ["a4","b3","b4","b5","b9
 
 main_memo = st.text_area("Input Catatan Tambahan (Khusus)", key="main_memo_v")
 
-# --- 6. [RESTORASI FULL] Telegram Message Builder (A + B) ---
+# --- 6. [A+B 완벽 통합] Telegram Message Builder ---
 if st.button("💾 SIMPAN & KIRIM LAPORAN KE TELEGRAM", type="primary", use_container_width=True):
     try:
         tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {today_str} | {shift_label}\n👤 Penanggung Jawab: {pelapor}\n--------------------------------\n\n"
         
-        # [A: Rutinitas QC - RESTORED]
+        # [A 섹션 복구]
         tg_msg += "📅 *Rutinitas QC (Direct Check)*\n"
         if sw_a1: tg_msg += f"• A-1. Stok BB Steam: {ans_a1_1 if ans_a1_1 else '-'}\n"
         if sw_a2: tg_msg += f"• A-2. Stok BS Defros: {ans_a2_1 if ans_a2_1 else '-'}\n"
         if sw_a3: tg_msg += f"• A-3. Handover: {ans_a3_1}\n"
-        if sw_a7: tg_msg += f"• A-7. Rencana: {ans_a7_1}\n  └ Stok: {ans_a7_3 if ans_a7_3 else '-'}\n"
+        if sw_a7: tg_msg += f"• A-7. Rencana: {ans_a7_1} | Stok: {ans_a7_3 if ans_a7_3 else '-'}\n"
+        if sw_a9: tg_msg += f"• A-9. Sisa Barang: {ans_a9_1}\n"
         if sw_a5: tg_msg += f"• A-5. Status Tes Steam: {ans_a5}\n"
+        if sw_a6: tg_msg += f"• A-6. List BB Jam 12.00: {ans_a6_1} | Kordinasi: {ans_a6_2}\n"
         
-        # [A: Interval Check - RESTORED]
+        # [A: Interval Check 복구]
         if st.session_state.targets['a4'] > 0 and st.session_state.a4_ts:
             tg_msg += f"\n⚡ *A-4. {QC_CONTENT['A']['a4']['title']}*\n"
             tg_msg += f"  └ {get_prog_bar(len(st.session_state.a4_ts), st.session_state.targets['a4'])} ({len(st.session_state.a4_ts)}/{st.session_state.targets['a4']})\n"
-            tg_msg += f"  🕒 기록: {', '.join(st.session_state.a4_ts)}\n"
+            tg_msg += f"  🕒 {', '.join(st.session_state.a4_ts)}\n"
         
         if st.session_state.targets['a8'] > 0 and st.session_state.a8_logs:
             tg_msg += f"\n⏰ *A-8. {QC_CONTENT['A']['a8']['title']}*\n"
             tg_msg += f"  └ {get_prog_bar(len(st.session_state.a8_logs), st.session_state.targets['a8'])}\n"
 
-        # [B: Laporan Absensi]
+        # [B 섹션]
         if sw_b1:
             tg_msg += "\n👥 *B-1. Laporan Absensi*\n"
             for tl in TARGET_LABELS:
@@ -223,7 +236,6 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN KE TELEGRAM", type="primary", use_cont
                     d = st.session_state.b1_data[tl][ar]
                     tg_msg += f"  - {ar}: {d['jam'] if d['jam'] else '00.00'} / {d['pax'] if d['pax'] else '0'} / ({d['st']})\n"
 
-        # [B: Detail Laporan Team Leader]
         tg_msg += "\n🅱️ *Detail Laporan Team Leader*\n"
         for k in B_KEYS:
             target = st.session_state.targets[k]
@@ -235,6 +247,6 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN KE TELEGRAM", type="primary", use_cont
                     tg_msg += f"  - {log['t']} / {res_str}" + (f" / {log['memo']}" if log['memo'] else "") + "\n"
                 tg_msg += "\n"
         
-        tg_msg += f"📝 *Catatan:* {main_memo if main_memo else '-'}\n🕒 *Update:* {datetime.now(jakarta_tz).strftime('%H:%M:%S')}"
+        tg_msg += f"📝 *Catatan:* {main_memo if main_memo else '-'}\n🕒 *Update Terakhir:* {datetime.now(jakarta_tz).strftime('%H:%M:%S')}"
         send_telegram(tg_msg); st.success("✅ Laporan Full (A+B) Berhasil Dikirim!")
     except Exception as e: st.error(f"Gagal mengirim: {e}")
