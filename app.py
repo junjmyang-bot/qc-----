@@ -44,34 +44,52 @@ QC_CONTENT = {
     }
 }
 
-# --- 3. [복구] 사이드바 설정창 (사라졌던 왼쪽 프레임) ---
+# --- 3. [개선] A/B 분리형 사이드바 설정창 ---
 with st.sidebar:
     st.header("⚙️ 리포트 세부 설정")
-    st.write("오늘 필요한 리포트를 결정하세요.")
+    st.write("오늘 가동할 리포트 항목을 선택하세요.")
     
+    # --- 30분 단위 설정 ---
     with st.expander("⚡ 30분 단위 설정", expanded=True):
+        st.caption("🅰️ QC Direct Check")
         sw_a4=st.toggle("A-4 QC Tablet", True); g_a4=st.number_input("A-4 목표", 1, 30, 16)
-        sw_a5=st.toggle("A-5 Steam Test", True); g_a5=st.number_input("A-5 목표", 1, 30, 10)
+        sw_a5=st.toggle("A-5 Status Tes Steam", True); g_a5=st.number_input("A-5 목표", 1, 30, 10)
+        
+        st.divider() # 시각적 구분선
+        
+        st.caption("🅱️ Check TL Reports")
         sw_b3=st.toggle("B-3 Kupas", True); g_b3=st.number_input("B-3 목표", 1, 30, 16)
         sw_b4=st.toggle("B-4 Packing", True); g_b4=st.number_input("B-4 목표", 1, 30, 16)
         sw_b5=st.toggle("B-5 Hasil", True); g_b5=st.number_input("B-5 목표", 1, 30, 16)
         sw_b9=st.toggle("B-9 Kondisi BB", True); g_b9=st.number_input("B-9 목표", 1, 30, 16)
 
+    # --- 1시간 단위 설정 ---
     with st.expander("⏰ 1시간 단위 설정", expanded=False):
+        st.caption("🅰️ QC Direct Check")
         sw_a8=st.toggle("A-8 Barang Jatuh", True); g_a8=st.number_input("A-8 목표", 1, 24, 8)
+        
+        st.divider()
+        
+        st.caption("🅱️ Check TL Reports")
         sw_b2=st.toggle("B-2 Status Steam", True); g_b2=st.number_input("B-2 목표", 1, 24, 8)
         sw_b6=st.toggle("B-6 Giling", True); g_b6=st.number_input("B-6 목표", 1, 24, 8)
         sw_b7=st.toggle("B-7 Steril", True); g_b7=st.number_input("B-7 목표", 1, 24, 8)
         sw_b8=st.toggle("B-8 Potong", True); g_b8=st.number_input("B-8 목표", 1, 24, 8)
         sw_b10=st.toggle("B-10 Dry", True); g_b10=st.number_input("B-10 목표", 1, 24, 8)
 
+    # --- 시프트 루틴 설정 ---
     with st.expander("📅 시프트 루틴 설정", expanded=False):
+        st.caption("🅰️ QC Direct Check")
         sw_a1=st.toggle("A-1 Stok BB", True)
         sw_a2=st.toggle("A-2 Stok BS", True)
         sw_a3=st.toggle("A-3 Handover IN", True)
         sw_a6=st.toggle("A-6 List BB", True)
         sw_a7=st.toggle("A-7 Rencana", True)
         sw_a9=st.toggle("A-9 Sisa Barang", True)
+        
+        st.divider()
+        
+        st.caption("🅱️ Check TL Reports")
         sw_b1=st.toggle("B-1 Absensi", True)
 
 # --- 4. 데이터 로직 ---
