@@ -14,20 +14,32 @@ today_str = now_jakarta.strftime('%m-%d')
 full_today = now_jakarta.strftime('%Y-%m-%d')
 current_time_full = now_jakarta.strftime('%H:%M:%S')
 
-# [수정] 버튼 색상 변경을 위한 커스텀 CSS 적용 (연한 하늘색)
+# [수정] 색상 테마 전면 교체 (오렌지 제거 -> 화이트/하늘색)
 st.markdown("""
 <style>
 div[data-testid='stStatusWidget']{display:none!important;}
-.main{background-color:white!important;}
-/* 클릭된 버튼(secondary type)을 연한 하늘색으로 변경 */
+.main {background-color: white !important;}
+
+/* 1. 클릭 전 버튼 (Primary): 하얀색 배경 + 연한 테두리 */
+div[data-testid="stButton"] > button[kind="primary"] {
+    background-color: white !important;
+    color: #333333 !important;
+    border: 1px solid #DDDDDD !important;
+    font-weight: 500 !important;
+}
+
+/* 2. 클릭 후 버튼 (Secondary): 연한 하늘색 배경 */
 div[data-testid="stButton"] > button[kind="secondary"] {
     background-color: #87CEEB !important; /* Sky Blue */
     color: white !important;
     border: none !important;
+    font-weight: 600 !important;
 }
-div[data-testid="stButton"] > button[kind="secondary"]:hover {
-    background-color: #00BFFF !important; /* 호버 시 조금 더 진한 파랑 */
-    color: white !important;
+
+/* 3. 호버 효과 */
+div[data-testid="stButton"] > button:hover {
+    border-color: #87CEEB !important;
+    color: #00BFFF !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -35,7 +47,7 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
 TELEGRAM_TOKEN = st.secrets["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 
-# 🌟 Engine Google Sheets (Koneksi Sheet)
+# 🌟 Engine Google Sheets
 @st.cache_resource
 def get_gc_client():
     try:
@@ -69,7 +81,7 @@ QC_CONTENT = {
         "b5": {"title": "Hasil per jam kupas/packing", "qs": ["Produk sesuai", "TL sudah update", "Laporan sesuai"]},
         "b6": {"title": "Laporan Giling", "qs": ["Produk sesuai", "TL sudah update", "Laporan sesuai"]},
         "b7": {"title": "Laporan Giling - steril", "qs": ["Produk sesuai", "TL sudah update", "Laporan sesuai"]},
-        "b8": {"title": "Laporan potong", "qs": ["Produk sesuai", "TL update", "Cara nata benar?", "Settingan mesin benar?", "Laporan sesuai"]},
+        "b8": {"title": "Laporan potong", "qs": ["Produk sesuai", "TL update", "Cara nata benar?", "Settingan machines benar?", "Laporan sesuai"]},
         "b9": {"title": "Laporan kondisi BB", "qs": ["TL update", "Laporan sesuai"]},
         "b10": {"title": "Laporan Dry", "qs": ["TL update", "Laporan sesuai", "Status mesin 2 kali"]}
     }
@@ -103,7 +115,7 @@ def confirm_cancel_dialog(key, idx):
         else: st.session_state.b_logs[key] = st.session_state.b_logs[key][:idx]
         st.rerun()
 
-# --- 4. Sidebar: Pengaturan Detail ---
+# --- 4. Sidebar: Pengaturan ---
 with st.sidebar:
     st.header("⚙️ Pengaturan Laporan")
     with st.expander("📅 Visibilitas Rutinitas Shift", expanded=True):
@@ -187,7 +199,6 @@ with st.container(border=True):
                         with r2: st.session_state.b1_data[tl][ar]['pax']=st.text_input(f"Pax {ar} {tl}", key=f"inp_{tl}_{ar}_p")
                         with r3: st.session_state.b1_data[tl][ar]['st']=st.radio(f"S/T {ar} {tl}", ["O", "X"], key=f"inp_{tl}_{ar}_s", horizontal=True)
 
-# [섹션 2: 30분 단위]
 st.subheader("⚡ Interval 30 Menit")
 with st.container(border=True):
     ca, cb = st.columns(2)
@@ -195,7 +206,7 @@ with st.container(border=True):
         st.info("🅰️ QC Direct Check")
         if st.session_state.get("sw_a4") and st.session_state.targets['a4'] > 0:
             st.markdown(f"**A4. {QC_CONTENT['A']['a4']['title']}**")
-            for it in QC_CONTENT['A']['a4']['check_items']: st.markdown(f"<span style='color:black;'>→ {it}</span>", unsafe_allow_html=True)
+            for it in QC_CONTENT['A']['a4']['check_items']: st.markdown(f"<span style='color:black; font-weight:500;'>→ {it}</span>", unsafe_allow_html=True)
             cols = st.columns(4)
             for i in range(st.session_state.targets['a4']):
                 with cols[i % 4]:
@@ -221,12 +232,11 @@ with st.container(border=True):
                     with st.expander(f"Verifikasi {k.upper()} Step {len(logs)+1}", expanded=True):
                         res = {q: st.radio(f"→ {q}", ["O", "X"], key=f"q_{k}_{len(logs)}_{q}", horizontal=True) for q in QC_CONTENT['B'][k]['qs']}
                         memo = st.text_input("Catatan / Respon (Jika X)", key=f"m_{k}_{len(logs)}")
-                        if st.button("Simpan Data", key=f"sv_{k}"):
+                        if st.button("Save", key=f"sv_{k}"):
                             st.session_state.b_logs[k].append({"t": datetime.now(jakarta_tz).strftime("%H:%M"), "chk": res, "memo": memo})
                             del st.session_state[f"active_{k}"]; st.rerun()
                 st.divider()
 
-# [섹션 3: 1시간 단위]
 st.subheader("⏰ Interval 1 Jam")
 with st.container(border=True):
     ca, cb = st.columns(2)
@@ -244,10 +254,9 @@ with st.container(border=True):
                         else: st.session_state.active_a8 = True; st.rerun()
             if st.session_state.get("active_a8"):
                 with st.expander(f"📝 Periksa Hour {len(st.session_state.a8_logs)+1}", expanded=True):
-                    st.info("Periksa kondisi barang jatuh di setiap area (O: Aman / X: Butuh Tindakan)")
                     a8_res = {ar: st.radio(f"→ {ar}", ["O", "X"], key=f"a8_{len(st.session_state.a8_logs)}_{ar}", horizontal=True) for ar in QC_CONTENT['A']['a8']['areas']}
                     v_a8 = st.text_input("Barang segera dibereskan? (Ketik 'YES')", key="v_a8_inp")
-                    if v_a8.strip().upper() == "YES" and st.button("Konfirmasi & Simpan A8"):
+                    if v_a8.strip().upper() == "YES" and st.button("Simpan A8"):
                         st.session_state.a8_logs.append({"t": datetime.now(jakarta_tz).strftime("%H:%M"), "res": a8_res})
                         del st.session_state.active_a8; st.rerun()
     with cb:
@@ -274,7 +283,7 @@ with st.container(border=True):
 
 main_memo = st.text_area("Input Catatan Tambahan (Khusus)", key="v_main_memo")
 
-# --- 6. [전송 및 저장] 텔레그램 리포트 (줄바꿈 개선 및 양식 유지) ---
+# --- 6. [전송 및 저장] 텔레그램 리포트 완전 분류 복구 ---
 if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=True):
     try:
         tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n--------------------------------\n\n"
@@ -309,11 +318,11 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
                     tg_msg += f"  - {ar}: {d['jam'] if d['jam'] else '00.00'} / {d['pax'] if d['pax'] else '0'} / ({d['st']})\n"
             tg_msg += "\n"
 
-        # [3] Interval 30 Menit (줄바꿈 추가)
+        # [3] Interval 30 Menit (상세 투사 로직)
         tg_msg += "⚡ *Interval 30 Menit*\n"
         if st.session_state.targets['a4'] > 0:
             tg_msg += f"• A-4. {QC_CONTENT['A']['a4']['title']}\n"
-            tg_msg += f"  └ ■□□□□□□□□□ {get_prog_bar(len(st.session_state.a4_ts), st.session_state.targets['a4']).split(' (')[1]}\n\n" # [수정] 줄바꿈 추가
+            tg_msg += f"  └ ■□□□□□□□□□ {get_prog_bar(len(st.session_state.a4_ts), st.session_state.targets['a4']).split(' (')[1]}\n\n"
         for k in ["b3","b4","b5","b9"]:
             if st.session_state.get(f"sw_{k}") and st.session_state.targets[k] > 0:
                 logs = st.session_state.b_logs[k]
@@ -321,9 +330,9 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
                 tg_msg += f"  └ Progress: {get_prog_bar(len(logs), st.session_state.targets[k])}\n"
                 for l in logs:
                     tg_msg += f"  - {l['t']} / {' / '.join([f'({v})' for v in l['chk'].values()])} {l['memo']}\n"
-                tg_msg += "\n" # [수정] 줄바꿈 추가
+                tg_msg += "\n"
 
-        # [4] Interval 1 Jam (줄바꿈 추가)
+        # [4] Interval 1 Jam (상세 투사 로직)
         tg_msg += "⏰ *Interval 1 Jam*\n"
         if st.session_state.targets['a8'] > 0:
             tg_msg += f"• A-8. {QC_CONTENT['A']['a8']['title']}\n"
@@ -331,7 +340,7 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
             for log in st.session_state.a8_logs:
                 if isinstance(log, dict) and 'res' in log:
                     tg_msg += f"  - {log['t']} {'/'.join([f'({v})' for v in log['res'].values()])}\n"
-            tg_msg += "\n" # [수정] 줄바꿈 추가
+            tg_msg += "\n"
         for k in ["b2","b6","b7","b8","b10"]:
             if st.session_state.get(f"sw_{k}") and st.session_state.targets[k] > 0:
                 logs = st.session_state.b_logs[k]
@@ -339,9 +348,9 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
                 tg_msg += f"  └ Progress: {get_prog_bar(len(logs), st.session_state.targets[k])}\n"
                 for l in logs:
                     tg_msg += f"  - {l['t']} / {' / '.join([f'({v})' for v in l['chk'].values()])} {l['memo']}\n"
-                tg_msg += "\n" # [수정] 줄바꿈 추가
+                tg_msg += "\n"
 
-        tg_msg += f"\n📝 *Catatan:* {main_memo if main_memo else '-'}\n🕒 *Update:* {current_time_full}"
+        tg_msg += f"📝 *Catatan:* {main_memo if main_memo else '-'}\n🕒 *Update:* {current_time_full}"
         
         # [5] Google Sheets 저장
         if gc:
@@ -358,5 +367,5 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
                 return r
             worksheet.update(f"{get_c(new_col)}2", [[v] for v in header])
 
-        send_telegram(tg_msg); st.success("✅ Laporan Berhasil Dikirim (Format & Warna Tombol Diperbarui)!")
+        send_telegram(tg_msg); st.success("✅ Laporan Berhasil Dikirim!")
     except Exception as e: st.error(f"🚨 Error: {e}")
