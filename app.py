@@ -17,7 +17,7 @@ current_time_full = now_jakarta.strftime('%H:%M')
 TELEGRAM_TOKEN = st.secrets["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 
-# --- 2. 항목별 상세 가이드라인 ---
+# --- 2. 항목별 상세 가이드라인 (UI 노출용) ---
 GUIDE_MAP = {
     "a1": "✅ Sisa BB shift sebelumnya (ton)\n✅ Cukup untuk shift 지금/다음?",
     "a4": "✅ Update 30분 마다\n✅ Kebersihan & Kontaminan Kupas/Packing",
@@ -140,7 +140,7 @@ new_memo = st.text_area("종합 특이사항 입력", key="main_memo")
 if st.button("💾 구글 시트 저장 & 텔레그램 전송", type="primary", use_container_width=True):
     if gc:
         try:
-            # [1] 시트 준비
+            # [1] 구글 시트 업데이트 로직
             clean_shift = shift_label.split(" (")[0]
             target_tab_name = f"{today_str}_{clean_shift}"
             SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit'
@@ -148,7 +148,6 @@ if st.button("💾 구글 시트 저장 & 텔레그램 전송", type="primary", 
             try: worksheet = ss.worksheet(target_tab_name)
             except: worksheet = ss.add_worksheet(title=target_tab_name, rows="100", cols="50")
             
-            # [2] 구글 시트 데이터 (기존 라벨/페이로드 유지)
             header_title = f"{full_today} | {pelapor} | {current_time_full}"
             def cv(v): return ", ".join(v) if isinstance(v, list) else v
             labels = ["▶ 보고서 정보", "담당자", "", "", "▶ 30분 단위", "A-4 QC", "A-4 코멘트", "", "A-5 Steam", "A-5 코멘트", "", "B-3 Kupas", "B-3 코멘트", "", "B-4 Packing", "B-4 코멘트", "", "B-5 Hasil", "B-5 코멘트", "", "B-9 Kondisi", "B-9 코멘트", "", "▶ 1시간 단위", "A-8 Barang", "A-8 코멘트", "", "B-2 Steam", "B-2 코멘트", "", "B-6 Giling", "B-6 코멘트", "", "B-7 Steril", "B-7 코멘트", "", "B-8 Potong", "B-8 코멘트", "", "B-10 Dry", "B-10 코멘트", "", "▶ 시프트 루틴", "A-1 Stok", "A-1 메모", "", "A-2 BS", "A-2 메모", "", "A-3 Handover", "A-3 메모", "", "A-6 List", "A-6 메모", "", "A-7 Rencana", "A-7 메모", "", "A-9 Sisa", "A-9 메모", "", "B-1 Absen", "B-1 메모", "", "▶ 종합 메모", "기록 시각"]
@@ -164,37 +163,59 @@ if st.button("💾 구글 시트 저장 & 텔레그램 전송", type="primary", 
             worksheet.update("B2", [[v] for v in labels])
             worksheet.update(f"{get_c(new_idx)}2", [[v] for v in payload])
 
-            # [3] 텔레그램 상세 메시지 빌더
+            # [2] 텔레그램 상세 메시지 빌더 (타이틀 추가 버전 결합)
             tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n"
             tg_msg += "--------------------------------\n\n"
-            
+
             # 30분 단위 요약
             tg_msg += "*⚡ 30 Menit*\n"
-            m30_items = [("A-4", "a4", g_a4, sw_a4, m_a4), ("A-5", "a5", g_a5, sw_a5, m_a5), ("B-3", "b3", g_b3, sw_b3, m_b3), ("B-4", "b4", g_b4, sw_b4, m_b4), ("B-5", "b5", g_b5, sw_b5, m_b5), ("B-9", "b9", g_b9, sw_b9, m_b9)]
-            for label, key, goal, sw, m in m30_items:
+            m30_items = [
+                ("A-4", "a4", g_a4, sw_a4, m_a4, "QC Tablet"), 
+                ("A-5", "a5", g_a5, sw_a5, m_a5, "Status Steam Test"), 
+                ("B-3", "b3", g_b3, sw_b3, m_b3, "Situasi Kupas"), 
+                ("B-4", "b4", g_b4, sw_b4, m_b4, "Situasi Packing"), 
+                ("B-5", "b5", g_b5, sw_b5, m_b5, "Hasil Per Jam"), 
+                ("B-9", "b9", g_b9, sw_b9, m_b9, "Kondisi BB")
+            ]
+            for label, key, goal, sw, m, title in m30_items:
                 if sw:
-                    tg_msg += f"• {label}: {get_prog_bar(st.session_state.qc_store[key], goal)}\n"
+                    tg_msg += f"• {label}. {title}: {get_prog_bar(st.session_state.qc_store[key], goal)}\n"
                     if m: tg_msg += f"  └ 💬 {m}\n"
 
             # 1시간 단위 요약
             tg_msg += "\n*⏰ 1 Jam*\n"
-            m1h_items = [("A-8", "a8", g_a8, sw_a8, m_a8), ("B-2", "b2", g_b2, sw_b2, m_b2), ("B-6", "b6", g_b6, sw_b6, m_b6), ("B-7", "b7", g_b7, sw_b7, m_b7), ("B-8", "b8", g_b8, sw_b8, m_b8), ("B-10", "b10", g_b10, sw_b10, m_b10)]
-            for label, key, goal, sw, m in m1h_items:
+            m1h_items = [
+                ("A-8", "a8", g_a8, sw_a8, m_a8, "Status Barang Jatuh"), 
+                ("B-2", "b2", g_b2, sw_b2, m_b2, "Status Steam"), 
+                ("B-6", "b6", g_b6, sw_b6, m_b6, "Laporan Giling"), 
+                ("B-7", "b7", g_b7, sw_b7, m_b7, "Giling - Steril"), 
+                ("B-8", "b8", g_b8, sw_b8, m_b8, "Laporan Potong"), 
+                ("B-10", "b10", g_b10, sw_b10, m_b10, "Laporan Dry")
+            ]
+            for label, key, goal, sw, m, title in m1h_items:
                 if sw:
-                    tg_msg += f"• {label}: {get_prog_bar(st.session_state.qc_store[key], goal)}\n"
+                    tg_msg += f"• {label}. {title}: {get_prog_bar(st.session_state.qc_store[key], goal)}\n"
                     if m: tg_msg += f"  └ 💬 {m}\n"
 
             # 루틴 요약
             tg_msg += "\n*📅 Routine*\n"
-            rt_items = [("A-1", "a1", sw_a1, p_a1, m_a1), ("A-2", "a2", sw_a2, p_a2, m_a2), ("A-3", "a3", sw_a3, p_a3, m_a3), ("A-6", "a6", sw_a6, p_a6, m_a6), ("A-7", "a7", sw_a7, p_a7, m_a7), ("A-9", "a9", sw_a9, p_a9, m_a9), ("B-1", "b1", sw_b1, p_b1, m_b1)]
-            for label, key, sw, checks, m in rt_items:
+            rt_items = [
+                ("A-1", "a1", sw_a1, p_a1, m_a1, "Stok BB Steam"), 
+                ("A-2", "a2", sw_a2, p_a2, m_a2, "Stok BS Defros"), 
+                ("A-3", "a3", sw_a3, p_a3, m_a3, "Handover In"), 
+                ("A-6", "a6", sw_a6, p_a6, m_a6, "List BB Kirim"), 
+                ("A-7", "a7", sw_a7, p_a7, m_a7, "Rencana Produksi"), 
+                ("A-9", "a9", sw_a9, p_a9, m_a9, "Sisa Barang"), 
+                ("B-1", "b1", sw_b1, p_b1, m_b1, "Cek Absensi")
+            ]
+            for label, key, sw, checks, m, title in rt_items:
                 if sw:
-                    tg_msg += f"• {label}: {', '.join(checks) if checks else '-'}\n"
+                    tg_msg += f"• {label}. {title}: {', '.join(checks) if checks else '-'}\n"
                     if m: tg_msg += f"  └ 💬 {m}\n"
             
             tg_msg += f"\n📝 *Memo:* {new_memo}"
             
-            # [4] 발송
+            # [3] 최종 발송
             send_telegram(tg_msg)
             st.success(f"✅ [{target_tab_name}] 저장 및 텔레그램 상세 보고 완료!")
             
