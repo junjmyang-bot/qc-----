@@ -21,10 +21,10 @@ TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 QC_CONTENT = {
     "A": {
         "a1": {"title": "Cek Stok BB Sudah steam", "qs": ["Sisa BB sisa shift sebelumya?", "Jumlah bb steam 충분?", "Respon if kurang?"]},
-        "a2": {"title": "Cek Stok BS (Sudah defros)", "qs": ["Sudah defros 얼마?", "Estimasi 작업량?", "Jam tambah defros?"]},
+        "a2": {"title": "Cek Stok BS (Sudah defros)", "qs": ["Sudah defros berapa?", "Estimasi 작업량?", "Jam tambah defros?"]},
         "a5": {
             "title": "Status tes steam", 
-            "desc": ["maksimal jam 13.00", "update laporan setiap 30 menit", "cek sampel", "cek pembaruan laporan"]
+            "desc": ["maksimal selesai jam 13.00", "update laporan setiap 30 menit", "cek sampel", "cek pembaruan laporan"]
         },
         "a6": {"title": "List BB butuh kirim", "qs": ["List kirim jam 12.00 sudah ada?", "Kordinasi gudang & plantation?"]},
         "a3": {"title": "Handover shift 전", "qs": ["Sudah dapat handover?", "Produksi sesuai rencana?"]},
@@ -47,11 +47,10 @@ QC_CONTENT = {
     }
 }
 
-# --- 3. 세션 상태 초기화 (AttributeError 방지) ---
+# --- 3. 세션 상태 초기화 ---
 ITEMS = ["a4","a5","b3","b4","b5","b9","a8","b2","b6","b7","b8","b10","a1","a2","a3","a6","a7","a9","b1"]
 if 'qc_store' not in st.session_state: st.session_state.qc_store = {k: [] for k in ITEMS}
 if 'v_map' not in st.session_state: st.session_state.v_map = {k: 0 for k in ITEMS}
-if 'history' not in st.session_state: st.session_state.history = {k: [] for k in ITEMS}
 if 'a4_ts' not in st.session_state: st.session_state.a4_ts = []
 if 'a8_logs' not in st.session_state: st.session_state.a8_logs = []
 
@@ -65,14 +64,14 @@ def send_telegram(text):
 @st.dialog("Konfirmasi Pembatalan")
 def confirm_cancel_dialog(idx):
     st.warning(f"Apakah Anda yakin ingin menghapus waktu di kolom {idx+1}?")
-    if st.button("Ya, Hapus (취소)", type="primary", use_container_width=True):
+    if st.button("Ya, Hapus", type="primary", use_container_width=True):
         st.session_state.a4_ts = st.session_state.a4_ts[:idx]
         st.rerun()
 
 # --- 4. 사이드바 설정 ---
 with st.sidebar:
     st.header("⚙️ 리포트 세부 설정")
-    with st.expander("📅 시프트 루틴 설정 (최상단)", expanded=True):
+    with st.expander("📅 시프트 루틴 설정", expanded=True):
         st.caption("🅰️ Routine Others")
         sw_a1=st.toggle(f"A-1 {QC_CONTENT['A']['a1']['title']}", True); sw_a2=st.toggle(f"A-2 {QC_CONTENT['A']['a2']['title']}", True)
         sw_a3=st.toggle(f"A-3 {QC_CONTENT['A']['a3']['title']}", True); sw_a7=st.toggle(f"A-7 {QC_CONTENT['A']['a7']['title']}", True); sw_a9=st.toggle(f"A-9 {QC_CONTENT['A']['a9']['title']}", True)
@@ -83,13 +82,11 @@ with st.sidebar:
     with st.expander("⚡ 30분 단위 설정", expanded=False):
         st.caption("🅰️ QC Direct"); sw_a4=st.toggle(f"A-4 {QC_CONTENT['A']['a4']['title']}", True)
         st.divider(); st.caption("🅱️ Check TL")
-        sw_b3=st.toggle(f"B-3 {QC_CONTENT['B']['b3']['title']}", True); sw_b4=st.toggle(f"B-4 {QC_CONTENT['B']['b4']['title']}", True)
-        sw_b5=st.toggle(f"B-5 {QC_CONTENT['B']['b5']['title']}", True); sw_b9=st.toggle(f"B-9 {QC_CONTENT['B']['b9']['title']}", True)
+        sw_b3=st.toggle(f"B-3 {QC_CONTENT['B']['b3']['title']}", True); sw_b4=st.toggle(f"B-4 {QC_CONTENT['B']['b4']['title']}", True); sw_b5=st.toggle(f"B-5 {QC_CONTENT['B']['b5']['title']}", True); sw_b9=st.toggle(f"B-9 {QC_CONTENT['B']['b9']['title']}", True)
     with st.expander("⏰ 1시간 단위 설정", expanded=False):
         st.caption("🅰️ QC Direct"); sw_a8=st.toggle(f"A-8 {QC_CONTENT['A']['a8']['title']}", True)
         st.divider(); st.caption("🅱️ Check TL")
-        sw_b2=st.toggle(f"B-2 {QC_CONTENT['B']['b2']['title']}", True); sw_b6=st.toggle(f"B-6 {QC_CONTENT['B']['b6']['title']}", True)
-        sw_b7=st.toggle(f"B-7 {QC_CONTENT['B']['b7']['title']}", True); sw_b8=st.toggle(f"B-8 {QC_CONTENT['B']['b8']['title']}", True); sw_b10=st.toggle(f"B-10 {QC_CONTENT['B']['b10']['title']}", True)
+        sw_b2=st.toggle(f"B-2 {QC_CONTENT['B']['b2']['title']}", True); sw_b6=st.toggle(f"B-6 {QC_CONTENT['B']['b6']['title']}", True); sw_b7=st.toggle(f"B-7 {QC_CONTENT['B']['b7']['title']}", True); sw_b8=st.toggle(f"B-8 {QC_CONTENT['B']['b8']['title']}", True); sw_b10=st.toggle(f"B-10 {QC_CONTENT['B']['b10']['title']}", True)
 
 # --- 5. 메인 UI ---
 st.title("🏭 SOI QC 모니터링 시스템")
@@ -138,7 +135,7 @@ with st.container(border=True):
             st.markdown(f"**A5. {QC_CONTENT['A']['a5']['title']}**")
             for item in QC_CONTENT['A']['a5']['desc']: st.markdown(f"<span style='color:black;'>→ {item}</span>", unsafe_allow_html=True)
             ans_a5 = st.radio("A5 Status", ["Done", "Not done"], horizontal=True, key="a5_st", label_visibility="collapsed")
-            memo_a5 = st.text_input("Memo (A5 Not done)", key="m_a5") if ans_a5 == "Not done" else ""; st.divider()
+            memo_a5 = st.text_input("Memo (If Not done A5)", key="m_a5") if ans_a5 == "Not done" else ""; st.divider()
         if sw_a6:
             st.markdown(f"**A6. {QC_CONTENT['A']['a6']['title']}**")
             ans_a6_1 = st.radio(f"-> {QC_CONTENT['A']['a6']['qs'][0]}", ["Yes", "No"], horizontal=True, key="a6_1")
@@ -170,6 +167,13 @@ with st.container(border=True):
                         if st.button(txt, key=f"a4_b_{i}", disabled=is_disabled, type="primary", use_container_width=True):
                             st.session_state.a4_ts.append(datetime.now(jakarta_tz).strftime("%H:%M")); st.rerun()
             st.text_input("A4 코멘트", key="m_a4")
+    with col_b:
+        st.warning("🅱️ Check TL Reports")
+        for k in ["b3", "b4", "b5", "b9"]:
+            if eval(f"sw_{k}"):
+                st.markdown(f"**{k.upper()}. {QC_CONTENT['B'][k]['title']}**")
+                vk = st.session_state.v_map[k]; st.pills(k, [str(i) for i in range(1, 17)], key=f"u_{k}_{vk}", selection_mode="multi", label_visibility="collapsed")
+                st.text_input("코멘트", key=f"m_{k}")
 
 st.subheader("⏰ 1시간 단위")
 with st.container(border=True):
@@ -191,54 +195,103 @@ with st.container(border=True):
                     if st.button(f"Confirm Hour {curr_a8+1}", type="primary"):
                         st.session_state.a8_logs.append({"t": datetime.now(jakarta_tz).strftime("%H:%M"), "f": has_f, "d": f_inf if has_f=="Yes" else None}); st.rerun()
             for i, log in enumerate(st.session_state.a8_logs): st.success(f"Hour {i+1} [{log['t']}] Fall: {log['f']}")
+    with col_b:
+        st.warning("🅱️ Check TL Reports")
+        for k in ["b2", "b6", "b7", "b8", "b10"]:
+            if eval(f"sw_{k}"):
+                st.markdown(f"**{k.upper()}. {QC_CONTENT['B'][k]['title']}**")
+                vk = st.session_state.v_map[k]; st.pills(k, [str(i) for i in range(1, 9)], key=f"u_{k}_{vk}", selection_mode="multi", label_visibility="collapsed")
+                st.text_input("코멘트", key=f"m_{k}")
 
-# --- 6. 저장 및 [수정] 텔레그램 전송 엔진 ---
+main_memo = st.text_area("종합 특이사항 입력", key="main_memo_input")
+
+# --- 6. [전면 개편] 텔레그램 상세 전송 엔진 ---
 if st.button("💾 저장 및 텔레그램 전송", type="primary", use_container_width=True):
     try:
-        # 메시지 헤더
-        tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n"
-        tg_msg += "--------------------------------\n\n"
+        tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n--------------------------------\n\n"
         
-        # [Section 1] Routine Others (상세 데이터 투사)
-        tg_msg += "*📅 Routine Others*\n"
-        if sw_a1: tg_msg += f"• A-1 Stok BB: {ans_a1_1 if ans_a1_1 else '-'} / {ans_a1_2 if ans_a1_2 else '-'}\n"
-        if sw_a2: tg_msg += f"• A-2 Stok BS: {ans_a2_1 if ans_a2_1 else '-'} / {ans_a2_2 if ans_a2_2 else '-'}\n"
-        if sw_a3: tg_msg += f"• A-3 Handover: {ans_a3_1}" + (f" (💬 {memo_a3_1})" if memo_a3_1 else "") + f" | Sesuai: {ans_a3_2}\n"
-        if sw_a7: tg_msg += f"• A-7 Rencana: {ans_a7_1} / Handover: {ans_a7_2}" + (f" (👤 {name_a7_2})" if name_a7_2 else "") + "\n"
-        if sw_a9: tg_msg += f"• A-9 Sisa Barang: {ans_a9_1}\n"
-        if sw_b1: tg_msg += f"• B-1 Absensi: {', '.join(st.session_state.u_b1) if st.session_state.u_b1 else '-'}\n"
+        # [Section: Routine Others]
+        tg_msg += "📅 *Routine Others*\n"
         
-        # [Section 2] Bahan Baku (Shift 1 Focus)
-        tg_msg += "\n*📦 Bahan Baku (Shift 1)*\n"
-        if sw_a5: tg_msg += f"• A-5 Status Steam: {ans_a5}" + (f" (💬 {memo_a5})" if memo_a5 else "") + "\n"
-        if sw_a6: tg_msg += f"• A-6 List BB: {ans_a6_1}" + (f" (💬 {memo_a6_1})" if memo_a6_1 else "") + f" | Kordinasi: {ans_a6_2}\n"
-        
-        # [Section 3] 30분 단위 (A-4 타임스탬프)
+        # A-1 상세화
+        if sw_a1:
+            time_str = ', '.join(p_a1) if p_a1 else "Belum Check"
+            tg_msg += f"• A-1. {QC_CONTENT['A']['a1']['title']}\n({time_str})\n"
+            tg_msg += f"- {QC_CONTENT['A']['a1']['qs'][0]}\n  └ {ans_a1_1 if ans_a1_1 else '-'}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a1']['qs'][1]}\n  └ {ans_a1_2 if ans_a1_2 else '-'}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a1']['qs'][2]}\n  └ {ans_a1_3 if ans_a1_3 else '-'}\n\n"
+
+        # A-2 상세화
+        if sw_a2:
+            time_str = ', '.join(p_a2) if p_a2 else "Belum Check"
+            tg_msg += f"• A-2. {QC_CONTENT['A']['a2']['title']}\n({time_str})\n"
+            tg_msg += f"- {QC_CONTENT['A']['a2']['qs'][0]}\n  └ {ans_a2_1 if ans_a2_1 else '-'}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a2']['qs'][1]}\n  └ {ans_a2_2 if ans_a2_2 else '-'}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a2']['qs'][2]}\n  └ {ans_a2_3 if ans_a2_3 else '-'}\n\n"
+
+        # A-3 상세화
+        if sw_a3:
+            tg_msg += f"• A-3. {QC_CONTENT['A']['a3']['title']}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a3']['qs'][0]}\n  └ {ans_a3_1}" + (f" (💬 {memo_a3_1})" if memo_a3_1 else "") + "\n"
+            tg_msg += f"- {QC_CONTENT['A']['a3']['qs'][1]}\n  └ {ans_a3_2}" + (f" (💬 {memo_a3_2})" if memo_a3_2 else "") + "\n\n"
+
+        # A-7 상세화
+        if sw_a7:
+            tg_msg += f"• A-7. {QC_CONTENT['A']['a7']['title']}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a7']['qs'][0]}\n  └ {ans_a7_1}" + (f" (💬 {memo_a7_1})" if memo_a7_1 else "") + "\n"
+            tg_msg += f"- {QC_CONTENT['A']['a7']['qs'][1]}\n  └ {ans_a7_2}" + (f" (👤 Penerima: {name_a7_2})" if name_a7_2 else f" (💬 {memo_a7_2})" if memo_a7_2 else "") + "\n"
+            tg_msg += f"- {QC_CONTENT['A']['a7']['qs'][2]}\n  └ {ans_a7_3 if ans_a7_3 else '-'}\n\n"
+
+        # A-9 상세화
+        if sw_a9:
+            tg_msg += f"• A-9. {QC_CONTENT['A']['a9']['title']}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a9']['qs'][0]}\n  └ {ans_a9_1}" + (f" (💬 {memo_a9_1})" if memo_a9_1 else "") + "\n"
+            tg_msg += f"- {QC_CONTENT['A']['a9']['qs'][1]}\n  └ {ans_a9_2 if ans_a9_2 else '-'}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a9']['qs'][2]}\n  └ {ans_a9_3 if ans_a9_3 else '-'}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a9']['qs'][3]}\n  └ {ans_a9_4 if ans_a9_4 else '-'}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a9']['qs'][4]}\n  └ {ans_a9_5 if ans_a9_5 else '-'}\n\n"
+
+        # B-1 상세화
+        if sw_b1:
+            tg_msg += f"• B-1. {QC_CONTENT['B']['b1']['title']}\n"
+            tg_msg += f"  └ {', '.join(st.session_state.u_b1) if st.session_state.u_b1 else 'Belum Check'}\n\n"
+
+        # [Section: Bahan Baku]
+        tg_msg += "📦 *Bahan Baku (Shift 1)*\n"
+        if sw_a5:
+            tg_msg += f"• A-5. {QC_CONTENT['A']['a5']['title']}\n"
+            tg_msg += f"  └ {ans_a5}" + (f" (💬 {memo_a5})" if memo_a5 else "") + "\n\n"
+        if sw_a6:
+            tg_msg += f"• A-6. {QC_CONTENT['A']['a6']['title']}\n"
+            tg_msg += f"- {QC_CONTENT['A']['a6']['qs'][0]}\n  └ {ans_a6_1}" + (f" (💬 {memo_a6_1})" if memo_a6_1 else "") + "\n"
+            tg_msg += f"- {QC_CONTENT['A']['a6']['qs'][1]}\n  └ {ans_a6_2}" + (f" (💬 {memo_a6_2})" if memo_a6_2 else "") + "\n\n"
+
+        # [Section: 30분 단위]
         if sw_a4:
-            tg_msg += f"\n*⚡ A-4. {QC_CONTENT['A']['a4']['title']}*\n"
-            if st.session_state.a4_ts: tg_msg += f"🕒 기록: {' | '.join(st.session_state.a4_ts)}\n"
-            tg_msg += f"{get_prog_bar(st.session_state.a4_ts, 16)}\n"
-            
-        # [Section 4] 1시간 단위 (A-8 상세 로그)
+            tg_msg += f"⚡ *A-4. {QC_CONTENT['A']['a4']['title']}*\n"
+            if st.session_state.a4_ts: tg_msg += f"🕒 Records: {' | '.join(st.session_state.a4_ts)}\n"
+            tg_msg += f"{get_prog_bar(st.session_state.a4_ts, 16)}\n\n"
+
+        # [Section: 1시간 단위]
         if sw_a8 and st.session_state.a8_logs:
-            tg_msg += f"\n*⏰ A-8. {QC_CONTENT['A']['a8']['title']}*\n"
+            tg_msg += f"⏰ *A-8. {QC_CONTENT['A']['a8']['title']}*\n"
             for i, log in enumerate(st.session_state.a8_logs):
                 tg_msg += f"  Hr{i+1}({log['t']}): Fall {log['f']}\n"
                 if log['f'] == "Yes": tg_msg += f"    └ 📦 {log['d']['p']} / 💬 {log['d']['r']}\n"
+            tg_msg += "\n"
 
-        # [Section 5] Check TL Reports (B-Series)
-        tg_msg += "\n*🅱️ Check TL Reports*\n"
+        # [Section: Check TL Reports (B-Series Progress)]
+        tg_msg += "🅱️ *Check TL Reports*\n"
         for k in ["b3", "b4", "b5", "b9", "b2", "b6", "b7", "b8", "b10"]:
             if eval(f"sw_{k}"):
-                # B-series는 Pills 선택 정보를 history에서 가져와서 바(bar)로 표시
+                # 개별 항목의 선택된 개수를 가져옴
+                current_pills = st.session_state.qc_store[k]
                 goal = 16 if k in ["b3","b4","b5","b9"] else 8
-                # 현재 선택된 값을 가져와서 바 생성
-                # 세션 상태에서 직접 값을 읽어오기 위해 u_{k}_{idx} 가 아닌 실제 위젯 값을 찾아야함
-                # 여기서는 임시로 progress_bar 함수 활용
                 tg_msg += f"• {k.upper()}. {QC_CONTENT['B'][k]['title']}\n"
-        
-        # 하단 메모 및 전송
-        tg_msg += f"\n📝 *Memo:* {st.session_state.main_memo if 'main_memo' in st.session_state else '-'}\n"
+                tg_msg += f"  └ {get_prog_bar(current_pills, goal)}\n"
+
+        # [Final Memo]
+        tg_msg += f"\n📝 *Memo:* {main_memo if main_memo else '-'}\n"
         tg_msg += f"🕒 *Update Terakhir:* {datetime.now(jakarta_tz).strftime('%H:%M:%S')}"
         
         send_telegram(tg_msg)
