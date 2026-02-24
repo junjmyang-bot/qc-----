@@ -14,7 +14,23 @@ today_str = now_jakarta.strftime('%m-%d')
 full_today = now_jakarta.strftime('%Y-%m-%d')
 current_time_full = now_jakarta.strftime('%H:%M:%S')
 
-st.markdown("<style>div[data-testid='stStatusWidget']{display:none!important;}.main{background-color:white!important;}</style>", unsafe_allow_html=True)
+# [수정] 버튼 색상 변경을 위한 커스텀 CSS 적용 (연한 하늘색)
+st.markdown("""
+<style>
+div[data-testid='stStatusWidget']{display:none!important;}
+.main{background-color:white!important;}
+/* 클릭된 버튼(secondary type)을 연한 하늘색으로 변경 */
+div[data-testid="stButton"] > button[kind="secondary"] {
+    background-color: #87CEEB !important; /* Sky Blue */
+    color: white !important;
+    border: none !important;
+}
+div[data-testid="stButton"] > button[kind="secondary"]:hover {
+    background-color: #00BFFF !important; /* 호버 시 조금 더 진한 파랑 */
+    color: white !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 TELEGRAM_TOKEN = st.secrets["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
@@ -205,7 +221,7 @@ with st.container(border=True):
                     with st.expander(f"Verifikasi {k.upper()} Step {len(logs)+1}", expanded=True):
                         res = {q: st.radio(f"→ {q}", ["O", "X"], key=f"q_{k}_{len(logs)}_{q}", horizontal=True) for q in QC_CONTENT['B'][k]['qs']}
                         memo = st.text_input("Catatan / Respon (Jika X)", key=f"m_{k}_{len(logs)}")
-                        if st.button("Save", key=f"sv_{k}"):
+                        if st.button("Simpan Data", key=f"sv_{k}"):
                             st.session_state.b_logs[k].append({"t": datetime.now(jakarta_tz).strftime("%H:%M"), "chk": res, "memo": memo})
                             del st.session_state[f"active_{k}"]; st.rerun()
                 st.divider()
@@ -258,12 +274,12 @@ with st.container(border=True):
 
 main_memo = st.text_area("Input Catatan Tambahan (Khusus)", key="v_main_memo")
 
-# --- 6. [전송 및 저장] 텔레그램 리포트 [30분/1시간 단위] 완전 분류 복구 ---
+# --- 6. [전송 및 저장] 텔레그램 리포트 (줄바꿈 개선 및 양식 유지) ---
 if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=True):
     try:
         tg_msg = f"🚀 *Laporan QC Lapangan*\n📅 {full_today} | {shift_label}\n👤 QC: {pelapor}\n--------------------------------\n\n"
         
-        # [1] Routine Others (A1, A2, A3, A5, A6, A7, A9)
+        # [1] Routine Others
         tg_msg += "📅 *Routine Others*\n"
         for k in ["a1","a2","a3","a5","a6","a7","a9"]:
             if globals().get(f"sw_{k}"):
@@ -286,20 +302,18 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
         if sw_b1:
             tg_msg += "--------------------------------\n\n👥 *B-1. Laporan Absensi*\n"
             for idx, tl in enumerate(TARGET_LABELS):
-                if idx == 1: tg_msg += "\n" # [복구] 한 칸 띄우기
+                if idx == 1: tg_msg += "\n"
                 tg_msg += f"  {tl}\n"
                 for ar in QC_CONTENT['B']['b1']['areas']:
                     d = st.session_state.b1_data[tl][ar]
                     tg_msg += f"  - {ar}: {d['jam'] if d['jam'] else '00.00'} / {d['pax'] if d['pax'] else '0'} / ({d['st']})\n"
             tg_msg += "\n"
 
-        # [3] [신규 분류] Interval 30 Menit (A-4, B3, B4, B5, B9)
+        # [3] Interval 30 Menit (줄바꿈 추가)
         tg_msg += "⚡ *Interval 30 Menit*\n"
-        # A-4 (QC Direct Check)
         if st.session_state.targets['a4'] > 0:
             tg_msg += f"• A-4. {QC_CONTENT['A']['a4']['title']}\n"
-            tg_msg += f"  └ ■□□□□□□□□□ {get_prog_bar(len(st.session_state.a4_ts), st.session_state.targets['a4']).split(' (')[1]}\n"
-        # B-항목 (Team Leader)
+            tg_msg += f"  └ ■□□□□□□□□□ {get_prog_bar(len(st.session_state.a4_ts), st.session_state.targets['a4']).split(' (')[1]}\n\n" # [수정] 줄바꿈 추가
         for k in ["b3","b4","b5","b9"]:
             if st.session_state.get(f"sw_{k}") and st.session_state.targets[k] > 0:
                 logs = st.session_state.b_logs[k]
@@ -307,18 +321,17 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
                 tg_msg += f"  └ Progress: {get_prog_bar(len(logs), st.session_state.targets[k])}\n"
                 for l in logs:
                     tg_msg += f"  - {l['t']} / {' / '.join([f'({v})' for v in l['chk'].values()])} {l['memo']}\n"
-        tg_msg += "\n"
+                tg_msg += "\n" # [수정] 줄바꿈 추가
 
-        # [4] [신규 분류] Interval 1 Jam (A-8, B2, B6, B7, B8, B10)
+        # [4] Interval 1 Jam (줄바꿈 추가)
         tg_msg += "⏰ *Interval 1 Jam*\n"
-        # A-8 (QC Direct Check)
         if st.session_state.targets['a8'] > 0:
             tg_msg += f"• A-8. {QC_CONTENT['A']['a8']['title']}\n"
             tg_msg += f"  └ ■□□□□□□□□□ {get_prog_bar(len(st.session_state.a8_logs), st.session_state.targets['a8']).split(' (')[1]}\n"
             for log in st.session_state.a8_logs:
                 if isinstance(log, dict) and 'res' in log:
                     tg_msg += f"  - {log['t']} {'/'.join([f'({v})' for v in log['res'].values()])}\n"
-        # B-항목 (Team Leader)
+            tg_msg += "\n" # [수정] 줄바꿈 추가
         for k in ["b2","b6","b7","b8","b10"]:
             if st.session_state.get(f"sw_{k}") and st.session_state.targets[k] > 0:
                 logs = st.session_state.b_logs[k]
@@ -326,6 +339,7 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
                 tg_msg += f"  └ Progress: {get_prog_bar(len(logs), st.session_state.targets[k])}\n"
                 for l in logs:
                     tg_msg += f"  - {l['t']} / {' / '.join([f'({v})' for v in l['chk'].values()])} {l['memo']}\n"
+                tg_msg += "\n" # [수정] 줄바꿈 추가
 
         tg_msg += f"\n📝 *Catatan:* {main_memo if main_memo else '-'}\n🕒 *Update:* {current_time_full}"
         
@@ -344,5 +358,5 @@ if st.button("💾 SIMPAN & KIRIM LAPORAN", type="primary", use_container_width=
                 return r
             worksheet.update(f"{get_c(new_col)}2", [[v] for v in header])
 
-        send_telegram(tg_msg); st.success("✅ Laporan Berhasil Dikirim (Pemisahan 30m/1h Selesai)!")
+        send_telegram(tg_msg); st.success("✅ Laporan Berhasil Dikirim (Format & Warna Tombol Diperbarui)!")
     except Exception as e: st.error(f"🚨 Error: {e}")
