@@ -1,176 +1,364 @@
 import streamlit as st
 from datetime import datetime
+import json
 import gspread
-import json  # 이 부품이 글자를 정보 꾸러미로 바꿔줍니다!
 from google.oauth2.service_account import Credentials
+from typing import Any
 
-# --- 1. 초고속 설정을 위한 캐싱 및 앱 세팅 ---
-st.set_page_config(page_title="SOI QC HIGH-SPEED", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="SOI QC Smart System", layout="wide", page_icon="factory")
 
-# 🌟 하얀 화면(로딩 마스크)을 물리적으로 제거하는 최적화 CSS
-st.markdown("""
+st.markdown(
+    """
     <style>
-    div[data-testid="stAppViewBlockContainer"], 
-    div[data-testid="stSidebarUserContent"], 
-    section[data-testid="stSidebar"],
-    .stApp.Element-Loading { opacity: 1 !important; transition: none !important; }
-    div[data-testid="stStatusWidget"], .stDeployButton { display: none !important; }
     .main { background-color: white !important; }
+    div[data-testid="stStatusWidget"], .stDeployButton { display: none !important; }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-# 🌟 [초고속 비결] 구글 시트 연결을 메모리에 고정합니다.
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit"
+
+PROGRESS_30 = ["a4", "a5", "b3", "b4", "b5", "b9"]
+PROGRESS_1H = ["a8", "b2", "b6", "b7", "b8", "b10"]
+ROUTINE_SHIFT = ["a1", "a2", "a3", "a6", "a7", "a9", "b1"]
+
+REPORTS = {
+    "a4": {"code": "A-4", "kind": "progress", "group": "30min", "label": "Laporan QC di Tablet", "goal_default": 16, "goal_max": 30},
+    "a5": {"code": "A-5", "kind": "progress", "group": "30min", "label": "Status Tes Steam", "goal_default": 10, "goal_max": 30},
+    "b3": {"code": "B-3", "kind": "progress", "group": "30min", "label": "Laporan Situasi Kupas", "goal_default": 16, "goal_max": 30},
+    "b4": {"code": "B-4", "kind": "progress", "group": "30min", "label": "Laporan Situasi Packing", "goal_default": 16, "goal_max": 30},
+    "b5": {"code": "B-5", "kind": "progress", "group": "30min", "label": "Hasil Per Jam", "goal_default": 16, "goal_max": 30},
+    "b9": {"code": "B-9", "kind": "progress", "group": "30min", "label": "Laporan Kondisi BB", "goal_default": 16, "goal_max": 30},
+    "a8": {"code": "A-8", "kind": "progress", "group": "1hour", "label": "Status Barang Jatuh", "goal_default": 8, "goal_max": 24},
+    "b2": {"code": "B-2", "kind": "progress", "group": "1hour", "label": "Laporan Status Steam", "goal_default": 8, "goal_max": 24},
+    "b6": {"code": "B-6", "kind": "progress", "group": "1hour", "label": "Laporan Giling", "goal_default": 8, "goal_max": 24},
+    "b7": {"code": "B-7", "kind": "progress", "group": "1hour", "label": "Laporan Giling (Steril)", "goal_default": 8, "goal_max": 24},
+    "b8": {"code": "B-8", "kind": "progress", "group": "1hour", "label": "Laporan Potong", "goal_default": 8, "goal_max": 24},
+    "b10": {"code": "B-10", "kind": "progress", "group": "1hour", "label": "Laporan Dry", "goal_default": 8, "goal_max": 24},
+    "a1": {"code": "A-1", "kind": "routine", "group": "shift", "label": "Cek Stok BB Steam", "goal_default": 2, "goal_max": 5},
+    "a2": {"code": "A-2", "kind": "routine", "group": "shift", "label": "Cek Stok BS", "goal_default": 2, "goal_max": 5},
+    "a3": {"code": "A-3", "kind": "routine", "group": "shift", "label": "Handover IN", "goal_default": 1, "goal_max": 5},
+    "a6": {"code": "A-6", "kind": "routine", "group": "shift", "label": "List BB Butuh Kirim", "goal_default": 2, "goal_max": 5},
+    "a7": {"code": "A-7", "kind": "routine", "group": "shift", "label": "Handover & Rencana", "goal_default": 1, "goal_max": 5},
+    "a9": {"code": "A-9", "kind": "routine", "group": "shift", "label": "Sisa Barang", "goal_default": 1, "goal_max": 5},
+    "b1": {"code": "B-1", "kind": "routine", "group": "shift", "label": "Cek Laporan Absensi", "goal_default": 2, "goal_max": 5},
+}
+
+ROUTINE_SLOTS = ["Awal", "Istirahat", "Jam 12", "Handover", "Closing"]
+
+
+def safe_cell(matrix: list[list[str]], row_idx: int, col_idx: int, default: str = "") -> str:
+    if row_idx < 0 or col_idx < 0:
+        return default
+    if row_idx >= len(matrix):
+        return default
+    row = matrix[row_idx]
+    if col_idx >= len(row):
+        return default
+    return row[col_idx]
+
+
 @st.cache_resource
 def get_worksheet():
     try:
-        scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-        # Secrets에서 열쇠를 가져와서 변환합니다.
-        info = json.loads(st.secrets["gcp_service_account"]) 
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        info = json.loads(st.secrets["gcp_service_account"])
         creds = Credentials.from_service_account_info(info, scopes=scopes)
-        gc = gspread.authorize(creds) # 👈 이 줄이 꼭 있어야 시트 문이 열립니다!
-        
-        # 준모님 전용 시트 URL
-        SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kR2C_7IxC_5FpztsWQaBMT8EtbcDHerKL6YLGfQucWw/edit'
+        gc = gspread.authorize(creds)
         return gc.open_by_url(SHEET_URL).sheet1
-    except Exception as e:
-        # 실패 시 진짜 에러 내용을 화면에 보여줍니다.
-        st.error(f"🚨 연결 에러 발생: {e}")
+    except Exception as exc:
+        st.error(f"Koneksi Google Sheet gagal: {exc}")
         return None
 
-worksheet = get_worksheet()
 
-# --- 2. 데이터 저장소 및 원터치 로직 ---
-ITEMS = ["a4","a5","b3","b4","b5","b9","a8","b2","b6","b7","b8","b10","a1","a2","a3","a6","a7","a9","b1"]
+def init_state():
+    if "qc_store" not in st.session_state:
+        st.session_state.qc_store = {key: [] for key in PROGRESS_30 + PROGRESS_1H}
+    if "v_map" not in st.session_state:
+        st.session_state.v_map = {key: 0 for key in PROGRESS_30 + PROGRESS_1H}
 
-if 'qc_store' not in st.session_state:
-    st.session_state.qc_store = {k: [] for k in ITEMS}
-    st.session_state.v_map = {k: 0 for k in ITEMS} # 개별 버전 번호
 
-def fast_cascade(key):
-    v_idx = st.session_state.v_map[key]
-    raw = st.session_state[f"u_{key}_{v_idx}"]
-    if not raw: st.session_state.qc_store[key] = []
+def update_progress_slots(item_id: str) -> None:
+    version = st.session_state.v_map[item_id]
+    raw_values = st.session_state.get(f"u_{item_id}_{version}", [])
+    if not raw_values:
+        st.session_state.qc_store[item_id] = []
     else:
-        nums = [int(x) for x in raw if x.isdigit()]
-        if nums: st.session_state.qc_store[key] = [str(i) for i in range(1, max(nums) + 1)]
-    st.session_state.v_map[key] += 1 # 해당 항목만 즉시 갱신
+        numbers = [int(value) for value in raw_values if value.isdigit()]
+        if numbers:
+            st.session_state.qc_store[item_id] = [str(i) for i in range(1, max(numbers) + 1)]
+        else:
+            st.session_state.qc_store[item_id] = []
+    st.session_state.v_map[item_id] += 1
 
-def get_prog_bar(val, goal):
-    perc = int((len(val)/goal)*100) if goal > 0 else 0
-    if perc > 100: perc = 100
-    return f"{'■' * (perc // 10)}{'□' * (10 - (perc // 10))} ({perc}%)"
 
-# --- 3. 사이드바: 19개 항목 ON/OFF 및 목표 설정 복구 ---
-with st.sidebar:
-    st.header("⚙️ 리포트 세부 설정")
-    
-    with st.expander("⚡ 30분 단위 설정", expanded=True):
-        sw_a4=st.toggle("A-4 Laporan QC",True); g_a4=st.number_input("A-4 목표",1,30,16,key="ga4")
-        sw_a5=st.toggle("A-5 Status Tes Steam",True); g_a5=st.number_input("A-5 목표",1,30,10,key="ga5")
-        sw_b3=st.toggle("B-3 Kupas 상황보고",True); g_b3=st.number_input("B-3 목표",1,30,16,key="gb3")
-        sw_b4=st.toggle("B-4 Packing 상황보고",True); g_b4=st.number_input("B-4 목표",1,30,16,key="gb4")
-        sw_b5=st.toggle("B-5 시간당 결과",True); g_b5=st.number_input("B-5 목표",1,30,16,key="gb5")
-        sw_b9=st.toggle("B-9 원료 조건 보고",True); g_b9=st.number_input("B-9 목표",1,30,16,key="gb9")
+def progress_bar(values: list[str], goal: int) -> str:
+    if goal <= 0:
+        return "[----------] (0%)"
+    percent = min(100, int((len(values) / goal) * 100))
+    filled = percent // 10
+    return f"[{'#' * filled}{'-' * (10 - filled)}] ({percent}%)"
 
-    with st.expander("⏰ 1시간 단위 설정", expanded=False):
-        sw_a8=st.toggle("A-8 낙하물 상태",True); g_a8=st.number_input("A-8 목표",1,24,8,key="ga8")
-        sw_b2=st.toggle("B-2 스팀 상태",True); g_b2=st.number_input("B-2 목표",1,24,8,key="gb2")
-        sw_b6=st.toggle("B-6 분쇄 보고",True); g_b6=st.number_input("B-6 목표",1,24,8,key="gb6")
-        sw_b7=st.toggle("B-7 분쇄 보고(살균)",True); g_b7=st.number_input("B-7 목표",1,24,8,key="gb7")
-        sw_b8=st.toggle("B-8 절단 보고",True); g_b8=st.number_input("B-8 목표",1,24,8,key="gb8")
-        sw_b10=st.toggle("B-10 건조 보고",True); g_b10=st.number_input("B-10 목표",1,24,8,key="gb10")
 
-    with st.expander("📅 시프트 루틴 설정", expanded=False):
-        sw_a1=st.toggle("A-1 루틴",True); g_a1=st.number_input("A-1 체크수",1,5,2,key="ga1")
-        sw_a2=st.toggle("A-2 루틴",True); g_a2=st.number_input("A-2 체크수",1,5,2,key="ga2")
-        sw_a3=st.toggle("A-3 루틴",True); g_a3=st.number_input("A-3 체크수",1,5,1,key="ga3")
-        sw_a6=st.toggle("A-6 루틴",True); g_a6=st.number_input("A-6 체크수",1,5,2,key="ga6")
-        sw_a7=st.toggle("A-7 루틴",True); g_a7=st.number_input("A-7 체크수",1,5,1,key="ga7")
-        sw_a9=st.toggle("A-9 루틴",True); g_a9=st.number_input("A-9 체크수",1,5,1,key="ga9")
-        sw_b1=st.toggle("B-1 루틴",True); g_b1=st.number_input("B-1 체크수",1,5,2,key="gb1")
+def to_column_name(num: int) -> str:
+    result = ""
+    while num > 0:
+        num, rem = divmod(num - 1, 26)
+        result = chr(65 + rem) + result
+    return result
 
-# --- 4. 메인 UI 디자인 ---
-st.title("🏭 QC 모니터링 시스템")
-today = datetime.now().strftime('%Y-%m-%d')
 
-c1, c2 = st.columns(2)
-with c1: shift = st.selectbox("SHIFT", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"])
-with c2: pelapor = st.text_input("담당자 (PELAPOR)", value="JUNMO YANG")
+def join_values(values: Any) -> str:
+    if isinstance(values, list):
+        return ", ".join(values)
+    return values or ""
 
-def draw(label, key, goal, show):
-    if show:
-        st.markdown(f"**{label}**")
-        v = st.session_state.v_map[key]
-        st.pills(label, [str(i) for i in range(1, goal+1)], key=f"u_{key}_{v}", on_change=fast_cascade, args=(key,), selection_mode="multi", label_visibility="collapsed", default=st.session_state.qc_store[key])
-        return st.text_input(f"{label} 코멘트", key=f"m_{key}")
-    return ""
 
-st.subheader("⚡ 30분 단위")
-with st.container(border=True):
-    m_a4=draw("A-4 Laporan QC di Tablet","a4",g_a4,sw_a4); m_a5=draw("A-5 Status Tes Steam","a5",g_a5,sw_a5)
-    m_b3=draw("B-3 Laporan Situasi Kupas","b3",g_b3,sw_b3); m_b4=draw("B-4 Laporan Situasi Packing","b4",g_b4,sw_b4)
-    m_b5=draw("B-5 Hasil Per Jam","b5",g_b5,sw_b5); m_b9=draw("B-9 Laporan Kondisi BB","b9",g_b9,sw_b9)
+def render_sidebar_settings() -> dict[str, dict[str, Any]]:
+    settings: dict[str, dict[str, Any]] = {}
+    with st.sidebar:
+        st.header("Pengaturan Laporan")
 
-st.subheader("⏰ 1시간 단위")
-with st.container(border=True):
-    m_a8=draw("A-8 Status Barang Jatuh","a8",g_a8,sw_a8); m_b2=draw("B-2 Laporan Status Steam","b2",g_b2,sw_b2)
-    m_b6=draw("B-6 Laporan Giling","b6",g_b6,sw_b6); m_b7=draw("B-7 Laporan Giling (Steril)","b7",g_b7,sw_b7)
-    m_b8=draw("B-8 Laporan Potong","b8",g_b8,sw_b8); m_b10=draw("B-10 Laporan Dry","b10",g_b10,sw_b10)
+        with st.expander("30 Menit (A/B)", expanded=True):
+            for item_id in PROGRESS_30:
+                report = REPORTS[item_id]
+                settings[item_id] = {
+                    "show": st.toggle(f"{report['code']} {report['label']}", value=True, key=f"sw_{item_id}"),
+                    "goal": st.number_input(
+                        f"Target {report['code']}",
+                        min_value=1,
+                        max_value=report["goal_max"],
+                        value=report["goal_default"],
+                        key=f"g_{item_id}",
+                    ),
+                }
 
-st.subheader("📅 시프트 루틴")
-with st.container(border=True):
-    def routine(label, g, show, key):
-        if show:
-            st.markdown(f"**{label}**")
-            opts = ["Awal", "Istirahat", "Jam 12", "Handover", "Closing"][:g]
-            p = st.pills(label, opts, selection_mode="multi", key=f"u_{key}", label_visibility="collapsed")
-            m = st.text_input(f"{label} 메모", key=f"m_{key}")
-            return p, m
+        with st.expander("1 Jam (A/B)", expanded=False):
+            for item_id in PROGRESS_1H:
+                report = REPORTS[item_id]
+                settings[item_id] = {
+                    "show": st.toggle(f"{report['code']} {report['label']}", value=True, key=f"sw_{item_id}"),
+                    "goal": st.number_input(
+                        f"Target {report['code']}",
+                        min_value=1,
+                        max_value=report["goal_max"],
+                        value=report["goal_default"],
+                        key=f"g_{item_id}",
+                    ),
+                }
+
+        with st.expander("Shift Routine", expanded=False):
+            for item_id in ROUTINE_SHIFT:
+                report = REPORTS[item_id]
+                settings[item_id] = {
+                    "show": st.toggle(f"{report['code']} {report['label']}", value=True, key=f"sw_{item_id}"),
+                    "goal": st.number_input(
+                        f"Jumlah Cek {report['code']}",
+                        min_value=1,
+                        max_value=report["goal_max"],
+                        value=report["goal_default"],
+                        key=f"g_{item_id}",
+                    ),
+                }
+    return settings
+
+
+def render_progress_item(item_id, settings):
+    report = REPORTS[item_id]
+    show = settings[item_id]["show"]
+    goal = settings[item_id]["goal"]
+    if not show:
+        return ""
+
+    st.markdown(f"**{report['code']} {report['label']}**")
+    version = st.session_state.v_map[item_id]
+    options = [str(i) for i in range(1, goal + 1)]
+    st.pills(
+        report["label"],
+        options,
+        key=f"u_{item_id}_{version}",
+        on_change=update_progress_slots,
+        args=(item_id,),
+        selection_mode="multi",
+        label_visibility="collapsed",
+        default=st.session_state.qc_store[item_id],
+    )
+    return st.text_input(f"Komentar {report['code']}", key=f"m_{item_id}")
+
+
+def render_routine_item(item_id, settings):
+    report = REPORTS[item_id]
+    show = settings[item_id]["show"]
+    goal = settings[item_id]["goal"]
+    if not show:
         return [], ""
-    p_a1,m_a1=routine("A-1 Cek Stok BB Steam",g_a1,sw_a1,"a1"); p_a2,m_a2=routine("A-2 Cek Stok BS",g_a2,sw_a2,"a2")
-    p_a3,m_a3=routine("A-3 Handover IN",g_a3,sw_a3,"a3"); p_a6,m_a6=routine("A-6 List BB Butuh Kirim",g_a6,sw_a6,"a6")
-    p_a7,m_a7=routine("A-7 Handover & Rencana",g_a7,sw_a7,"a7"); p_a9,m_a9=routine("A-9 Sisa Barang",g_a9,sw_a9,"a9")
-    p_b1,m_b1=routine("B-1 Cek Laporan Absensi",g_b1,sw_b1,"b1")
 
-st.subheader("📝 종합 메모")
-new_memo = st.text_area("특이사항 입력", key="main_memo")
-if st.button("💾 구글 시트에 업데이트", use_container_width=True):
-    if worksheet:
-        all_v = worksheet.get_all_values()
-        t_key = f"{today} ({shift})"; head = all_v[1] if len(all_v) > 1 else []
-        idx = -1; old_m = ""
-        for i, v in enumerate(head):
-            if v == t_key: 
-                idx = i + 1
-                if len(all_v) > 63: old_m = all_v[63][i]
-                break
-        final_m = old_m + f"\n[{datetime.now().strftime('%H:%M')}] {new_memo}" if new_memo else old_m
-        def cv(v): return ", ".join(v) if isinstance(v, list) else v
-        # 65행 양식 기둥 데이터 구성
-        payload = [
-            "", t_key, pelapor, "", "", 
-            get_prog_bar(st.session_state.qc_store["a4"], g_a4) if sw_a4 else "-", m_a4, "", 
-            get_prog_bar(st.session_state.qc_store["a5"], g_a5) if sw_a5 else "-", m_a5, "", 
-            get_prog_bar(st.session_state.qc_store["b3"], g_b3) if sw_b3 else "-", m_b3, "", 
-            get_prog_bar(st.session_state.qc_store["b4"], g_b4) if sw_b4 else "-", m_b4, "", 
-            get_prog_bar(st.session_state.qc_store["b5"], g_b5) if sw_b5 else "-", m_b5, "", 
-            get_prog_bar(st.session_state.qc_store["b9"], g_b9) if sw_b9 else "-", m_b9, "", 
-            "", get_prog_bar(st.session_state.qc_store["a8"], g_a8) if sw_a8 else "-", m_a8, "", 
-            get_prog_bar(st.session_state.qc_store["b2"], g_b2) if sw_b2 else "-", m_b2, "", 
-            get_prog_bar(st.session_state.qc_store["b6"], g_b6) if sw_b6 else "-", m_b6, "", 
-            get_prog_bar(st.session_state.qc_store["b7"], g_b7) if sw_b7 else "-", m_b7, "", 
-            get_prog_bar(st.session_state.qc_store["b8"], g_b8) if sw_b8 else "-", m_b8, "", 
-            get_prog_bar(st.session_state.qc_store["b10"], g_b10) if sw_b10 else "-", m_b10, "", 
-            "", cv(p_a1) if sw_a1 else "-", m_a1, "", cv(p_a2) if sw_a2 else "-", m_a2, "", 
-            cv(p_a3) if sw_a3 else "-", m_a3, "", cv(p_a6) if sw_a6 else "-", m_a6, "", 
-            cv(p_a7) if sw_a7 else "-", m_a7, "", cv(p_a9) if sw_a9 else "-", m_a9, "", 
-            cv(p_b1) if sw_b1 else "-", m_b1, "", final_m, datetime.now().strftime('%H:%M:%S')
-        ]
-        if idx == -1: idx = len(head) + 1 if len(head) >= 3 else 3
-        def get_c(n):
-            r = ""
-            while n > 0: n, rem = divmod(n - 1, 26); r = chr(65 + rem) + r
-            return r
-        worksheet.update(f"{get_c(idx)}1", [[v] for v in payload])
-        st.success("✅ 저장 성공!")
-    else: st.error("시트 연결 실패")
+    st.markdown(f"**{report['code']} {report['label']}**")
+    options = ROUTINE_SLOTS[:goal]
+    picks = st.pills(
+        report["label"],
+        options,
+        selection_mode="multi",
+        key=f"u_{item_id}",
+        label_visibility="collapsed",
+    )
+    memo = st.text_input(f"Memo {report['code']}", key=f"m_{item_id}")
+    return picks, memo
+
+
+def build_payload(
+    today_key: str,
+    pelapor: str,
+    settings: dict[str, dict[str, Any]],
+    progress_comments: dict[str, str],
+    routine_checks: dict[str, list[str]],
+    routine_comments: dict[str, str],
+    final_memo: str,
+) -> list[str]:
+    payload = ["", today_key, pelapor, "", ""]
+
+    for item_id in PROGRESS_30:
+        show = settings[item_id]["show"]
+        goal = settings[item_id]["goal"]
+        value = progress_bar(st.session_state.qc_store[item_id], goal) if show else "-"
+        payload.extend([value, progress_comments.get(item_id, ""), ""])
+
+    payload.append("")
+
+    for item_id in PROGRESS_1H:
+        show = settings[item_id]["show"]
+        goal = settings[item_id]["goal"]
+        value = progress_bar(st.session_state.qc_store[item_id], goal) if show else "-"
+        payload.extend([value, progress_comments.get(item_id, ""), ""])
+
+    payload.append("")
+
+    for item_id in ROUTINE_SHIFT:
+        show = settings[item_id]["show"]
+        value = join_values(routine_checks.get(item_id, [])) if show else "-"
+        payload.extend([value, routine_comments.get(item_id, ""), ""])
+
+    payload.extend([final_memo, datetime.now().strftime("%H:%M:%S")])
+    return payload
+
+
+def append_memo(old_memo: str, new_memo: str) -> str:
+    if not new_memo:
+        return old_memo
+    timestamp = datetime.now().strftime("%H:%M")
+    prefix = f"[{timestamp}] {new_memo}"
+    if not old_memo:
+        return prefix
+    return f"{old_memo}\n{prefix}"
+
+
+def render_progress_section(title: str, item_ids: list[str], settings: dict[str, dict[str, Any]]) -> dict[str, str]:
+    st.subheader(title)
+    comments: dict[str, str] = {}
+    with st.container(border=True):
+        for item_id in item_ids:
+            comments[item_id] = render_progress_item(item_id, settings)
+    return comments
+
+
+def render_routine_section(settings: dict[str, dict[str, Any]]) -> tuple[dict[str, list[str]], dict[str, str]]:
+    st.subheader("Shift Routine")
+    checks: dict[str, list[str]] = {}
+    comments: dict[str, str] = {}
+    with st.container(border=True):
+        for item_id in ROUTINE_SHIFT:
+            check_values, memo = render_routine_item(item_id, settings)
+            checks[item_id] = check_values
+            comments[item_id] = memo
+    return checks, comments
+
+
+def save_to_sheet(
+    worksheet: Any,
+    today: str,
+    shift: str,
+    pelapor: str,
+    settings: dict[str, dict[str, Any]],
+    progress_comments: dict[str, str],
+    routine_checks: dict[str, list[str]],
+    routine_comments: dict[str, str],
+    new_memo: str,
+) -> None:
+    all_values = worksheet.get_all_values()
+    today_key = f"{today} ({shift})"
+    header_row = all_values[1] if len(all_values) > 1 else []
+
+    col_index = -1
+    for i, value in enumerate(header_row):
+        if value == today_key:
+            col_index = i + 1
+            break
+
+    old_memo = ""
+    if col_index > 0:
+        old_memo = safe_cell(all_values, 63, col_index - 1, "")
+
+    final_memo = append_memo(old_memo, new_memo)
+    payload = build_payload(
+        today_key=today_key,
+        pelapor=pelapor,
+        settings=settings,
+        progress_comments=progress_comments,
+        routine_checks=routine_checks,
+        routine_comments=routine_comments,
+        final_memo=final_memo,
+    )
+
+    if col_index == -1:
+        col_index = len(header_row) + 1 if len(header_row) >= 3 else 3
+
+    start_col = to_column_name(col_index)
+    worksheet.update(f"{start_col}1", [[value] for value in payload])
+
+
+def main() -> None:
+    init_state()
+    worksheet = get_worksheet()
+    settings = render_sidebar_settings()
+
+    st.title("SOI QC Smart System")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        shift = st.selectbox("Shift", ["Shift 1 (Pagi)", "Shift 2 (Sore)", "Shift tengah"])
+    with col2:
+        pelapor = st.text_input("Pelapor", value="JUNMO YANG")
+
+    progress_comments: dict[str, str] = {}
+    progress_comments.update(render_progress_section("30 Menit", PROGRESS_30, settings))
+    progress_comments.update(render_progress_section("1 Jam", PROGRESS_1H, settings))
+    routine_checks, routine_comments = render_routine_section(settings)
+
+    st.subheader("Memo Umum")
+    new_memo = st.text_area("Catatan tambahan", key="main_memo")
+
+    if st.button("Update ke Google Sheet", use_container_width=True):
+        if not worksheet:
+            st.error("Koneksi sheet gagal.")
+            return
+
+        save_to_sheet(
+            worksheet=worksheet,
+            today=today,
+            shift=shift,
+            pelapor=pelapor,
+            settings=settings,
+            progress_comments=progress_comments,
+            routine_checks=routine_checks,
+            routine_comments=routine_comments,
+            new_memo=new_memo,
+        )
+        st.success("Data berhasil disimpan.")
+
+
+main()
