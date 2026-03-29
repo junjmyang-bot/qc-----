@@ -1,0 +1,4 @@
+__pycache__/
+artifacts/
+board_state_local.json
+credentials.json
