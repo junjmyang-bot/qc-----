@@ -15,6 +15,7 @@ from board_logic import (
     display_time,
     dt_to_storage,
     empty_board_state,
+    now_local,
     finish_exception_instruction,
     handover_exception_instruction,
     normalize_board_state,
@@ -141,6 +142,7 @@ def init_session_state() -> None:
     st.session_state.setdefault("persist_message", "Belum disimpan.")
     st.session_state.setdefault("current_user", "QC Leader")
     st.session_state.setdefault("telegram_preview_parts", [])
+    st.session_state.setdefault("pending_toast", "")
 
 
 def ensure_board_loaded(worksheet: Any, today_key: str, day: date, shift_name: str) -> None:
@@ -163,6 +165,7 @@ def commit_board_change(
     telegram_event: dict[str, Any] | None = None,
     retry_telegram: bool = False,
 ) -> None:
+    st.session_state["telegram_preview_parts"] = []
     message = save_board_state(worksheet, today_key, shift_name, actor, st.session_state.board_state)
     telegram_message = ""
     if telegram_event or retry_telegram:
@@ -283,7 +286,7 @@ def parse_flexible_datetime_text(reference_day: date, text: str) -> datetime | N
 
 
 def fill_now_time_field(key: str) -> None:
-    st.session_state[key] = datetime.now().strftime("%H%M")
+    st.session_state[key] = now_local().strftime("%H%M")
 
 
 def render_report_card(
@@ -354,6 +357,7 @@ def render_report_card(
             submit_clicked = st.button("Record Submission", key=f"submit_btn_{report_id}", use_container_width=True)
 
             if submit_clicked:
+                before_status = report_eval["status"]
                 recorded_at = parse_submitted_at(schedule, submitted_at_text)
                 if not recorded_at:
                     st.error("Submitted at must be entered as HH:MM or HHMM, for example 08:05 or 0805.")
@@ -369,12 +373,24 @@ def render_report_card(
                     recorded_at=recorded_at,
                     shift_name=shift_name,
                 )
+                updated_view = build_board_view(board, shift_name, now=recorded_at)
+                updated_eval = next(
+                    (item for item in updated_view["active_reports"] if item["report_id"] == report_id),
+                    None,
+                )
+                after_status = updated_eval["status"] if updated_eval else before_status
+                if after_status == "Complete" and before_status != "Complete":
+                    st.session_state["pending_toast"] = f"{report['code']} complete. Today's required submissions are done."
+                    notice = f"{report['code']} submission recorded | status now Complete"
+                else:
+                    st.session_state["pending_toast"] = f"{report['code']} submission saved."
+                    notice = f"{report['code']} submission recorded"
                 commit_board_change(
                     worksheet,
                     today_key,
                     shift_name,
                     submitter.strip() or current_user,
-                    f"{report['code']} submission recorded",
+                    notice,
                 )
 
         history_items = list(reversed(board["reports"][report_id]["submissions"]))
@@ -470,12 +486,12 @@ def render_report_groups(
         items = board_view["active_reports_by_group"][group_title]
         if not items:
             continue
-        render_section_title(display_title)
-        for index in range(0, len(items), 2):
-            cols = st.columns(2)
-            for col, report_eval in zip(cols, items[index:index + 2]):
-                with col:
-                    render_report_card(worksheet, today_key, shift_name, current_user, report_eval)
+        with st.expander(display_title, expanded=True):
+            for index in range(0, len(items), 2):
+                cols = st.columns(2)
+                for col, report_eval in zip(cols, items[index:index + 2]):
+                    with col:
+                        render_report_card(worksheet, today_key, shift_name, current_user, report_eval)
 
 
 def main() -> None:
@@ -485,6 +501,9 @@ def main() -> None:
 
     st.title("QC Supervisory Board v1")
     render_helper_text("current track / ready for immediate operational use")
+    toast_message = st.session_state.pop("pending_toast", "")
+    if toast_message:
+        st.toast(toast_message, icon="✅")
 
     header_cols = st.columns([1.2, 1, 1])
     with header_cols[0]:
@@ -501,7 +520,7 @@ def main() -> None:
             key="shift_name",
         )
     with header_cols[2]:
-        today = datetime.now().date()
+        today = now_local().date()
         st.text_input("Today", value=today.isoformat(), disabled=True)
 
     today_key = f"{today.isoformat()} ({shift_name})"
@@ -512,8 +531,10 @@ def main() -> None:
         f"Storage source: {st.session_state.storage_source} | "
         f"Key: {today_key} | {st.session_state.persist_message}"
     )
-    if not worksheet:
+    if worksheet is None:
         st.warning("Google Sheet connection is unavailable. Actions will still save to local cache.")
+    else:
+        st.info("Google Sheet connection is active. Actions will save to Google Sheet and local cache.")
 
     telegram = ensure_telegram_cycle(board, today_key)
     with st.expander("Telegram Flow", expanded=False):
@@ -588,7 +609,7 @@ def main() -> None:
         )
         return
 
-    board_view = build_board_view(board, shift_name, now=datetime.now())
+    board_view = build_board_view(board, shift_name, now=now_local())
     summary_cols = st.columns([1, 1, 1, 1.2])
     summary_notes = {
         "Not Reported": "A required latest due slot is still missing.",
@@ -643,227 +664,230 @@ def main() -> None:
         board_view=board_view,
     )
 
-    st.subheader("Active Exception Instructions")
-    with st.container(border=True):
-        render_helper_text("This area shows active operating exceptions that are still in effect.")
+    with st.expander("Active Exception Instructions", expanded=True):
+        with st.container(border=True):
+            render_helper_text("This area shows active operating exceptions that are still in effect.")
 
-        exc_started_key = "exception_started_at"
-        exc_estimated_key = "exception_estimated_end_at"
-        st.session_state.setdefault(exc_started_key, "")
-        st.session_state.setdefault(exc_estimated_key, "")
-        exc_row_1 = st.columns([1.8, 1.2, 1.1, 1.1])
-        with exc_row_1[0]:
-            instruction_text = st.text_input("Instruction")
-        with exc_row_1[1]:
-            related_target = st.text_input("Bagian / Report")
-        with exc_row_1[2]:
-            checked_by_team = st.text_input("Dicek oleh")
-        with exc_row_1[3]:
-            worker_name = st.text_input("Pekerja")
-        exc_row_2 = st.columns([1.1, 1.1, 1.2, 0.45, 1.2, 0.45])
-        with exc_row_2[0]:
-            instructed_by = st.text_input("Beri instruksi")
-        with exc_row_2[1]:
-            approved_by = st.text_input("Approved by / Disetujui oleh")
-        with exc_row_2[2]:
-            started_at_text = st.text_input("Exception mulai", key=exc_started_key, placeholder="13:30 / 1330")
-        with exc_row_2[3]:
-            st.write("")
-            st.button("NOW", key="now_exception_start", on_click=fill_now_time_field, args=(exc_started_key,), use_container_width=True)
-        with exc_row_2[4]:
-            estimated_end_text = st.text_input("Estimasi selesai", key=exc_estimated_key, placeholder="15:00 / 1500")
-        with exc_row_2[5]:
-            st.write("")
-            st.button("NOW", key="now_exception_end", on_click=fill_now_time_field, args=(exc_estimated_key,), use_container_width=True)
-        exc_submit = st.button("Add Exception Instruction", key="add_exception_btn", use_container_width=True)
+            exc_started_key = "exception_started_at"
+            exc_estimated_key = "exception_estimated_end_at"
+            st.session_state.setdefault(exc_started_key, "")
+            st.session_state.setdefault(exc_estimated_key, "")
+            exc_row_1 = st.columns([1.8, 1.2, 1.1, 1.1])
+            with exc_row_1[0]:
+                instruction_text = st.text_input("Instruction")
+            with exc_row_1[1]:
+                related_target = st.text_input("Bagian / Report")
+            with exc_row_1[2]:
+                checked_by_team = st.text_input("Dicek oleh")
+            with exc_row_1[3]:
+                worker_name = st.text_input("Pekerja")
+            exc_row_2 = st.columns([1.1, 1.1, 1.2, 0.45, 1.2, 0.45])
+            with exc_row_2[0]:
+                instructed_by = st.text_input("Beri instruksi")
+            with exc_row_2[1]:
+                approved_by = st.text_input("Approved by / Disetujui oleh")
+            with exc_row_2[2]:
+                started_at_text = st.text_input("Exception mulai", key=exc_started_key, placeholder="13:30 / 1330")
+            with exc_row_2[3]:
+                st.write("")
+                st.button("NOW", key="now_exception_start", on_click=fill_now_time_field, args=(exc_started_key,), use_container_width=True)
+            with exc_row_2[4]:
+                estimated_end_text = st.text_input("Estimasi selesai", key=exc_estimated_key, placeholder="15:00 / 1500")
+            with exc_row_2[5]:
+                st.write("")
+                st.button("NOW", key="now_exception_end", on_click=fill_now_time_field, args=(exc_estimated_key,), use_container_width=True)
+            exc_submit = st.button("Add Exception Instruction", key="add_exception_btn", use_container_width=True)
 
-        if exc_submit and instruction_text.strip():
-            started_at_value = parse_flexible_datetime_text(today, started_at_text)
-            if not started_at_value:
-                st.error("Exception mulai must be entered as HH:MM or HHMM, for example 13:30 or 1330.")
-                return
-            estimated_end_value = parse_flexible_datetime_text(today, estimated_end_text) if estimated_end_text.strip() else None
-            add_exception_instruction(
-                board,
-                instruction_text=instruction_text,
-                related_department_or_report=related_target,
-                actor=current_user,
-                recorded_at=started_at_value,
-                checked_by_team=checked_by_team,
-                worker_name=worker_name,
-                instructed_by=instructed_by or current_user,
-                approved_by=approved_by,
-                estimated_end_at=dt_to_storage(estimated_end_value) if estimated_end_value else "",
-            )
-            commit_board_change(
-                worksheet,
-                today_key,
-                shift_name,
-                current_user,
-                "Exception Instruction added",
-            )
+            if exc_submit and instruction_text.strip():
+                started_at_value = parse_flexible_datetime_text(today, started_at_text)
+                if not started_at_value:
+                    st.error("Exception mulai must be entered as HH:MM or HHMM, for example 13:30 or 1330.")
+                    return
+                estimated_end_value = parse_flexible_datetime_text(today, estimated_end_text) if estimated_end_text.strip() else None
+                add_exception_instruction(
+                    board,
+                    instruction_text=instruction_text,
+                    related_department_or_report=related_target,
+                    actor=current_user,
+                    recorded_at=started_at_value,
+                    checked_by_team=checked_by_team,
+                    worker_name=worker_name,
+                    instructed_by=instructed_by or current_user,
+                    approved_by=approved_by,
+                    estimated_end_at=dt_to_storage(estimated_end_value) if estimated_end_value else "",
+                )
+                st.session_state["pending_toast"] = "Exception instruction saved."
+                commit_board_change(
+                    worksheet,
+                    today_key,
+                    shift_name,
+                    current_user,
+                    "Exception Instruction added",
+                )
 
-        if board_view["active_instructions"]:
-            for instruction in board_view["active_instructions"]:
-                with st.container(border=True):
-                    st.markdown('<span class="status-pill status-blue">Masih berlaku</span>', unsafe_allow_html=True)
-                    exc_display_1 = st.columns([1.8, 1.1, 1.1, 1.1])
-                    with exc_display_1[0]:
-                        st.write(f"Instruction: {instruction['instruction_text'] or '-'}")
-                    with exc_display_1[1]:
-                        st.write(f"Bagian: {instruction['related_department_or_report'] or '-'}")
-                    with exc_display_1[2]:
-                        st.write(f"Dicek: {instruction.get('checked_by_team') or '-'}")
-                    with exc_display_1[3]:
-                        st.write(f"Pekerja: {instruction.get('worker_name') or '-'}")
-                    exc_display_2 = st.columns([1.1, 1.1, 1, 1])
-                    with exc_display_2[0]:
-                        st.write(f"Beri instruksi: {instruction.get('instructed_by') or '-'}")
-                    with exc_display_2[1]:
-                        st.write(f"Approved by: {instruction.get('approved_by') or '-'}")
-                    with exc_display_2[2]:
-                        st.write(f"Mulai: {display_dt(instruction['started_at'])}")
-                    with exc_display_2[3]:
-                        st.write(f"Estimasi selesai: {display_dt(instruction.get('estimated_end_at', ''))}")
-                    if instruction.get("handover_at"):
-                        st.markdown(
-                            f'<div class="history-meta">Still active and handed over at {display_dt(instruction.get("handover_at", ""))} '
-                            f'by {instruction.get("handover_by") or "-"} to {instruction.get("handover_to") or "-"} | '
-                            f'Informed next team: {"Yes" if instruction.get("informed_next_team") else "No"} | '
-                            f'Note: {instruction.get("handover_note") or "-"}</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                    with st.expander("Still active, hand over to next shift", expanded=False):
-                        handover_time_key = f"handover_time_{instruction['id']}"
-                        st.session_state.setdefault(handover_time_key, "")
-                        handover_cols = st.columns([1.2, 0.45, 1.2, 1.2])
-                        with handover_cols[0]:
-                            handover_time_text = st.text_input(
-                                "Handover at",
-                                key=handover_time_key,
-                                placeholder="18:00 / 1800",
+            if board_view["active_instructions"]:
+                for instruction in board_view["active_instructions"]:
+                    with st.container(border=True):
+                        st.markdown('<span class="status-pill status-blue">Masih berlaku</span>', unsafe_allow_html=True)
+                        exc_display_1 = st.columns([1.8, 1.1, 1.1, 1.1])
+                        with exc_display_1[0]:
+                            st.write(f"Instruction: {instruction['instruction_text'] or '-'}")
+                        with exc_display_1[1]:
+                            st.write(f"Bagian: {instruction['related_department_or_report'] or '-'}")
+                        with exc_display_1[2]:
+                            st.write(f"Dicek: {instruction.get('checked_by_team') or '-'}")
+                        with exc_display_1[3]:
+                            st.write(f"Pekerja: {instruction.get('worker_name') or '-'}")
+                        exc_display_2 = st.columns([1.1, 1.1, 1, 1])
+                        with exc_display_2[0]:
+                            st.write(f"Beri instruksi: {instruction.get('instructed_by') or '-'}")
+                        with exc_display_2[1]:
+                            st.write(f"Approved by: {instruction.get('approved_by') or '-'}")
+                        with exc_display_2[2]:
+                            st.write(f"Mulai: {display_dt(instruction['started_at'])}")
+                        with exc_display_2[3]:
+                            st.write(f"Estimasi selesai: {display_dt(instruction.get('estimated_end_at', ''))}")
+                        if instruction.get("handover_at"):
+                            st.markdown(
+                                f'<div class="history-meta">Still active and handed over at {display_dt(instruction.get("handover_at", ""))} '
+                                f'by {instruction.get("handover_by") or "-"} to {instruction.get("handover_to") or "-"} | '
+                                f'Informed next team: {"Yes" if instruction.get("informed_next_team") else "No"} | '
+                                f'Note: {instruction.get("handover_note") or "-"}</div>',
+                                unsafe_allow_html=True,
                             )
-                        with handover_cols[1]:
-                            st.write("")
+
+                        with st.expander("Still active, hand over to next shift", expanded=False):
+                            handover_time_key = f"handover_time_{instruction['id']}"
+                            st.session_state.setdefault(handover_time_key, "")
+                            handover_cols = st.columns([1.2, 0.45, 1.2, 1.2])
+                            with handover_cols[0]:
+                                handover_time_text = st.text_input(
+                                    "Handover at",
+                                    key=handover_time_key,
+                                    placeholder="18:00 / 1800",
+                                )
+                            with handover_cols[1]:
+                                st.write("")
+                                st.button(
+                                    "NOW",
+                                    key=f"now_handover_{instruction['id']}",
+                                    on_click=fill_now_time_field,
+                                    args=(handover_time_key,),
+                                    use_container_width=True,
+                                )
+                            with handover_cols[2]:
+                                active_handover_to = st.text_input(
+                                    "Handover to",
+                                    key=f"active_handover_to_{instruction['id']}",
+                                    placeholder="TL shift berikutnya / nama pekerja",
+                                )
+                            with handover_cols[3]:
+                                active_handover_note = st.text_input(
+                                    "Catatan handover",
+                                    key=f"active_handover_note_{instruction['id']}",
+                                    placeholder="Masih lanjut di shift berikutnya",
+                                )
+                            active_informed = st.checkbox(
+                                "Yes, TL dan pekerja shift selanjutnya sudah diberi tahu",
+                                key=f"active_handover_confirm_{instruction['id']}",
+                            )
+                            if st.button("Still active, save handover", key=f"handover_instruction_{instruction['id']}"):
+                                handover_at = parse_flexible_datetime_text(today, handover_time_text)
+                                if not handover_at:
+                                    st.error("Handover at must be entered as HH:MM, HHMM, or MM-DD HH:MM.")
+                                    return
+                                if not active_handover_to.strip():
+                                    st.error("Please fill who this active exception was handed over to.")
+                                    return
+                                if not active_informed:
+                                    st.error("Please confirm that the next TL / pekerja has been informed.")
+                                    return
+                                handover_exception_instruction(
+                                    board,
+                                    instruction["id"],
+                                    current_user,
+                                    handover_to=active_handover_to,
+                                    handover_note=active_handover_note,
+                                    informed_next_team=True,
+                                    recorded_at=handover_at,
+                                )
+                                st.session_state["pending_toast"] = "Exception handover saved."
+                                commit_board_change(worksheet, today_key, shift_name, current_user, "Exception Instruction handed over")
+
+                        with st.expander("Selesai / handover", expanded=False):
+                            finished_key = f"finish_time_{instruction['id']}"
+                            st.session_state.setdefault(finished_key, "")
+                            finished_at_text = st.text_input(
+                                "Finished at",
+                                key=finished_key,
+                                placeholder="03-30 18:20 / 1820",
+                            )
                             st.button(
                                 "NOW",
-                                key=f"now_handover_{instruction['id']}",
+                                key=f"now_finish_{instruction['id']}",
                                 on_click=fill_now_time_field,
-                                args=(handover_time_key,),
-                                use_container_width=True,
+                                args=(finished_key,),
                             )
-                        with handover_cols[2]:
-                            active_handover_to = st.text_input(
-                                "Handover to",
-                                key=f"active_handover_to_{instruction['id']}",
-                                placeholder="TL shift berikutnya / nama pekerja",
+                            informed_next_team = st.checkbox(
+                                "Yes, exception ini sudah selesai dan sudah diberi tahu kepada TL dan pekerja selanjutnya",
+                                key=f"finish_confirm_{instruction['id']}",
                             )
-                        with handover_cols[3]:
-                            active_handover_note = st.text_input(
-                                "Catatan handover",
-                                key=f"active_handover_note_{instruction['id']}",
-                                placeholder="Masih lanjut di shift berikutnya",
-                            )
-                        active_informed = st.checkbox(
-                            "Yes, TL dan pekerja shift selanjutnya sudah diberi tahu",
-                            key=f"active_handover_confirm_{instruction['id']}",
-                        )
-                        if st.button("Still active, save handover", key=f"handover_instruction_{instruction['id']}"):
-                            handover_at = parse_flexible_datetime_text(today, handover_time_text)
-                            if not handover_at:
-                                st.error("Handover at must be entered as HH:MM, HHMM, or MM-DD HH:MM.")
-                                return
-                            if not active_handover_to.strip():
-                                st.error("Please fill who this active exception was handed over to.")
-                                return
-                            if not active_informed:
-                                st.error("Please confirm that the next TL / pekerja has been informed.")
-                                return
-                            handover_exception_instruction(
-                                board,
-                                instruction["id"],
-                                current_user,
-                                handover_to=active_handover_to,
-                                handover_note=active_handover_note,
-                                informed_next_team=True,
-                                recorded_at=handover_at,
-                            )
-                            commit_board_change(worksheet, today_key, shift_name, current_user, "Exception Instruction handed over")
+                            finish_cols = st.columns(2)
+                            with finish_cols[0]:
+                                handover_to = st.text_input(
+                                    "Kalau sempat handover, berikutnya ke siapa",
+                                    key=f"handover_to_{instruction['id']}",
+                                    placeholder="TL shift berikutnya / nama pekerja",
+                                )
+                            with finish_cols[1]:
+                                handover_note = st.text_input(
+                                    "Catatan handover",
+                                    key=f"handover_note_{instruction['id']}",
+                                    placeholder="Dilanjutkan shift 2 / tunggu material / dll",
+                                )
+                            if st.button("Yes, mark Selesai", key=f"finish_instruction_{instruction['id']}"):
+                                finished_at = parse_flexible_datetime_text(today, finished_at_text)
+                                if not finished_at:
+                                    st.error("Finished at must be entered as HH:MM, HHMM, or MM-DD HH:MM.")
+                                    return
+                                if not informed_next_team:
+                                    st.error("Please confirm that TL and the next worker have been informed before closing.")
+                                    return
+                                finish_exception_instruction(
+                                    board,
+                                    instruction["id"],
+                                    current_user,
+                                    recorded_at=finished_at,
+                                    handover_to=handover_to,
+                                    handover_note=handover_note,
+                                    informed_next_team=True,
+                                )
+                                st.session_state["pending_toast"] = "Exception marked selesai."
+                                commit_board_change(worksheet, today_key, shift_name, current_user, "Exception Instruction closed")
+            else:
+                st.info("There are no active Exception Instructions right now.")
 
-                    with st.expander("Selesai / handover", expanded=False):
-                        finished_key = f"finish_time_{instruction['id']}"
-                        st.session_state.setdefault(finished_key, "")
-                        finished_at_text = st.text_input(
-                            "Finished at",
-                            key=finished_key,
-                            placeholder="03-30 18:20 / 1820",
-                        )
-                        st.button(
-                            "NOW",
-                            key=f"now_finish_{instruction['id']}",
-                            on_click=fill_now_time_field,
-                            args=(finished_key,),
-                        )
-                        informed_next_team = st.checkbox(
-                            "Yes, exception ini sudah selesai dan sudah diberi tahu kepada TL dan pekerja selanjutnya",
-                            key=f"finish_confirm_{instruction['id']}",
-                        )
-                        finish_cols = st.columns(2)
-                        with finish_cols[0]:
-                            handover_to = st.text_input(
-                                "Kalau sempat handover, berikutnya ke siapa",
-                                key=f"handover_to_{instruction['id']}",
-                                placeholder="TL shift berikutnya / nama pekerja",
+            if board_view["completed_instructions"]:
+                with st.expander("Completed Exception Instructions", expanded=False):
+                    for instruction in board_view["completed_instructions"]:
+                        with st.container(border=True):
+                            st.markdown('<span class="status-pill status-slate">Selesai</span>', unsafe_allow_html=True)
+                            st.write(instruction["instruction_text"])
+                            st.markdown(
+                                f'<div class="history-meta">Bagian: {instruction["related_department_or_report"] or "-"} | '
+                                f'Dicek: {instruction.get("checked_by_team") or "-"} | '
+                                f'Pekerja: {instruction.get("worker_name") or "-"}</div>'
+                                f'<div class="history-meta">Beri instruksi: {instruction.get("instructed_by") or "-"} | '
+                                f'Approved by: {instruction.get("approved_by") or "-"} | '
+                                f'Mulai: {display_dt(instruction["started_at"])} | '
+                                f'Estimasi selesai: {display_dt(instruction.get("estimated_end_at", ""))}</div>'
+                                f'<div class="history-meta">Selesai: {display_dt(instruction["ended_at"])} | '
+                                f'Closed by: {instruction.get("ended_by") or "-"} | '
+                                f'Informed next team: {"Yes" if instruction.get("informed_next_team") else "No"} | '
+                                f'Handover to: {instruction.get("handover_to") or "-"}</div>'
+                                f'<div class="history-meta">Catatan handover: {instruction.get("handover_note") or "-"}</div>',
+                                unsafe_allow_html=True,
                             )
-                        with finish_cols[1]:
-                            handover_note = st.text_input(
-                                "Catatan handover",
-                                key=f"handover_note_{instruction['id']}",
-                                placeholder="Dilanjutkan shift 2 / tunggu material / dll",
-                            )
-                        if st.button("Yes, mark Selesai", key=f"finish_instruction_{instruction['id']}"):
-                            finished_at = parse_flexible_datetime_text(today, finished_at_text)
-                            if not finished_at:
-                                st.error("Finished at must be entered as HH:MM, HHMM, or MM-DD HH:MM.")
-                                return
-                            if not informed_next_team:
-                                st.error("Please confirm that TL and the next worker have been informed before closing.")
-                                return
-                            finish_exception_instruction(
-                                board,
-                                instruction["id"],
-                                current_user,
-                                recorded_at=finished_at,
-                                handover_to=handover_to,
-                                handover_note=handover_note,
-                                informed_next_team=True,
-                            )
-                            commit_board_change(worksheet, today_key, shift_name, current_user, "Exception Instruction closed")
-        else:
-            st.info("There are no active Exception Instructions right now.")
-
-        if board_view["completed_instructions"]:
-            with st.expander("Completed Exception Instructions", expanded=False):
-                for instruction in board_view["completed_instructions"]:
-                    with st.container(border=True):
-                        st.markdown('<span class="status-pill status-slate">Selesai</span>', unsafe_allow_html=True)
-                        st.write(instruction["instruction_text"])
-                        st.markdown(
-                            f'<div class="history-meta">Bagian: {instruction["related_department_or_report"] or "-"} | '
-                            f'Dicek: {instruction.get("checked_by_team") or "-"} | '
-                            f'Pekerja: {instruction.get("worker_name") or "-"}</div>'
-                            f'<div class="history-meta">Beri instruksi: {instruction.get("instructed_by") or "-"} | '
-                            f'Approved by: {instruction.get("approved_by") or "-"} | '
-                            f'Mulai: {display_dt(instruction["started_at"])} | '
-                            f'Estimasi selesai: {display_dt(instruction.get("estimated_end_at", ""))}</div>'
-                            f'<div class="history-meta">Selesai: {display_dt(instruction["ended_at"])} | '
-                            f'Closed by: {instruction.get("ended_by") or "-"} | '
-                            f'Informed next team: {"Yes" if instruction.get("informed_next_team") else "No"} | '
-                            f'Handover to: {instruction.get("handover_to") or "-"}</div>'
-                            f'<div class="history-meta">Catatan handover: {instruction.get("handover_note") or "-"}</div>',
-                            unsafe_allow_html=True,
-                        )
 
     off_today_reports = board_view["off_today_reports"]
     with st.expander(f"OFF TODAY ({len(off_today_reports)})", expanded=False):

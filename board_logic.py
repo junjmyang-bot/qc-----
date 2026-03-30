@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import date, datetime, time, timedelta
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 REPORT_ORDER = [
     "a4",
@@ -262,7 +263,7 @@ REPORTS = {
 
 
 def now_local() -> datetime:
-    return datetime.now()
+    return datetime.now(JAKARTA_TZ).replace(tzinfo=None)
 
 
 def dt_to_storage(value: datetime | None) -> str:
@@ -373,6 +374,7 @@ def empty_board_state() -> dict[str, Any]:
                 "event_id": "",
                 "text": "",
                 "reply_to_message_id": 0,
+                "edit_message_id": 0,
                 "created_at": "",
                 "remaining_parts": [],
             },
@@ -498,6 +500,7 @@ def normalize_board_state(raw: Any) -> dict[str, Any]:
             "event_id": str(pending_notice.get("event_id", "")),
             "text": str(pending_notice.get("text", "")),
             "reply_to_message_id": int(pending_notice.get("reply_to_message_id", 0) or 0),
+            "edit_message_id": int(pending_notice.get("edit_message_id", 0) or 0),
             "created_at": str(pending_notice.get("created_at", "")),
             "remaining_parts": [
                 str(item) for item in pending_notice.get("remaining_parts", []) if str(item).strip()
@@ -922,3 +925,4 @@ def serialize_global_state(board: dict[str, Any]) -> str:
         "telegram": board.get("telegram", {}),
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+JAKARTA_TZ = ZoneInfo("Asia/Jakarta")

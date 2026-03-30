@@ -9,7 +9,7 @@ from urllib import parse, request
 
 import streamlit as st
 
-from board_logic import build_board_view, display_dt, dt_to_storage
+from board_logic import build_board_view, display_dt, dt_to_storage, now_local
 
 TELEGRAM_MESSAGE_LIMIT = 3200
 
@@ -107,6 +107,23 @@ def send_telegram_text(text: str, reply_to_message_id: int | None = None) -> tup
     return True, "Telegram message sent", int(data.get("message_id", 0) or 0)
 
 
+def edit_telegram_text(message_id: int, text: str) -> tuple[bool, str]:
+    chat_id = get_config_value(
+        "TELEGRAM_CHAT_ID",
+        aliases=["CHAT_ID", "TELEGRAM_CHATID"],
+        nested_paths=[("TELEGRAM", "CHAT_ID"), ("telegram", "chat_id")],
+    )
+    if not chat_id:
+        return False, "TELEGRAM_CHAT_ID is not configured."
+    payload: dict[str, Any] = {"chat_id": chat_id, "message_id": int(message_id), "text": text}
+    ok, msg, _ = telegram_api("editMessageText", payload)
+    if ok:
+        return True, "Telegram message edited"
+    if "message is not modified" in msg.lower():
+        return True, "Telegram message already up to date"
+    return False, msg
+
+
 def ensure_telegram_cycle(board: dict[str, Any], today_key: str) -> dict[str, Any]:
     telegram = board.setdefault("telegram", {})
     if telegram.get("cycle_key") != today_key:
@@ -124,6 +141,7 @@ def ensure_telegram_cycle(board: dict[str, Any], today_key: str) -> dict[str, An
                     "event_id": "",
                     "text": "",
                     "reply_to_message_id": 0,
+                    "edit_message_id": 0,
                     "created_at": "",
                     "remaining_parts": [],
                 },
@@ -140,6 +158,7 @@ def ensure_telegram_cycle(board: dict[str, Any], today_key: str) -> dict[str, An
     pending_notice.setdefault("event_id", "")
     pending_notice.setdefault("text", "")
     pending_notice.setdefault("reply_to_message_id", 0)
+    pending_notice.setdefault("edit_message_id", 0)
     pending_notice.setdefault("created_at", "")
     pending_notice.setdefault("remaining_parts", [])
     telegram["pending_notice"] = pending_notice
@@ -147,7 +166,7 @@ def ensure_telegram_cycle(board: dict[str, Any], today_key: str) -> dict[str, An
 
 
 def start_new_telegram_cycle(board: dict[str, Any], today_key: str, started_at: datetime | None = None) -> None:
-    ts = dt_to_storage(started_at or datetime.now())
+    ts = dt_to_storage(started_at or now_local())
     board["telegram"] = {
         "cycle_key": today_key,
         "root_message_id": 0,
@@ -160,6 +179,7 @@ def start_new_telegram_cycle(board: dict[str, Any], today_key: str, started_at: 
             "event_id": "",
             "text": "",
             "reply_to_message_id": 0,
+            "edit_message_id": 0,
             "created_at": "",
             "remaining_parts": [],
         },
@@ -241,7 +261,7 @@ def build_current_summary_parts(
     *,
     max_chars: int = TELEGRAM_MESSAGE_LIMIT,
 ) -> list[str]:
-    board_view = build_board_view(board, shift_name, now=datetime.now())
+    board_view = build_board_view(board, shift_name, now=now_local())
     date_label = today_key.split(" (", 1)[0]
     active_reports = board_view["active_reports"]
     report_blocks: list[str] = []
@@ -322,6 +342,7 @@ def _clear_pending_notice(telegram: dict[str, Any]) -> None:
         "event_id": "",
         "text": "",
         "reply_to_message_id": 0,
+        "edit_message_id": 0,
         "created_at": "",
         "remaining_parts": [],
     }
@@ -334,6 +355,7 @@ def _store_pending_notice(
     event_id: str,
     text: str,
     reply_to_message_id: int,
+    edit_message_id: int = 0,
     remaining_parts: list[str] | None = None,
 ) -> None:
     telegram["pending_notice"] = {
@@ -341,7 +363,8 @@ def _store_pending_notice(
         "event_id": event_id,
         "text": text,
         "reply_to_message_id": int(reply_to_message_id or 0),
-        "created_at": dt_to_storage(datetime.now()),
+        "edit_message_id": int(edit_message_id or 0),
+        "created_at": dt_to_storage(now_local()),
         "remaining_parts": list(remaining_parts or []),
     }
 
@@ -374,8 +397,45 @@ def _send_parts_sequence(
     telegram["last_submission_id"] = event_id
     _clear_pending_notice(telegram)
     telegram["last_error"] = ""
-    telegram["last_sent_at"] = dt_to_storage(datetime.now())
+    telegram["last_sent_at"] = dt_to_storage(now_local())
     return True, f"Telegram summary sent ({len(parts)} part(s))"
+
+
+def _send_reply_parts(
+    telegram: dict[str, Any],
+    parts: list[str],
+    *,
+    event_id: str,
+    root_id: int,
+) -> tuple[bool, str]:
+    for idx, text in enumerate(parts):
+        ok, msg, _ = send_telegram_text(text, reply_to_message_id=root_id)
+        if not ok:
+            _store_pending_notice(
+                telegram,
+                kind="summary_reply",
+                event_id=event_id,
+                text=text,
+                reply_to_message_id=root_id,
+                remaining_parts=parts[idx + 1 :],
+            )
+            telegram["last_error"] = msg
+            return False, msg
+    telegram["last_submission_id"] = event_id
+    _clear_pending_notice(telegram)
+    telegram["last_error"] = ""
+    telegram["last_sent_at"] = dt_to_storage(now_local())
+    return True, f"Telegram summary updated ({len(parts)} reply part(s))"
+
+
+def build_summary_update_notice(actor: str) -> str:
+    return "\n".join(
+        [
+            "ringkasan board sudah diperbarui",
+            f"updated at: {now_local().strftime('%H:%M')}",
+            f"by: {actor or '-'}",
+        ]
+    )
 
 
 def send_current_summary_to_telegram(
@@ -389,16 +449,50 @@ def send_current_summary_to_telegram(
         telegram["last_error"] = "Telegram is not configured."
         return "Telegram skipped: not configured"
     parts = build_current_summary_parts(board, today_key, shift_name, actor)
-    event_id = f"manual-summary:{dt_to_storage(datetime.now())}"
-    ok, message = _send_parts_sequence(
-        telegram,
-        parts,
-        event_id=event_id,
-        root_id=int(telegram.get("root_message_id", 0) or 0),
-    )
-    if ok:
-        return message
-    return f"Telegram summary failed: {message}"
+    event_id = f"manual-summary:{dt_to_storage(now_local())}"
+    root_id = int(telegram.get("root_message_id", 0) or 0)
+    if not root_id:
+        ok, message = _send_parts_sequence(
+            telegram,
+            parts,
+            event_id=event_id,
+            root_id=0,
+        )
+        if ok:
+            return message
+        return f"Telegram summary failed: {message}"
+
+    ok, msg = edit_telegram_text(root_id, parts[0])
+    if not ok:
+        _store_pending_notice(
+            telegram,
+            kind="summary_edit",
+            event_id=event_id,
+            text=parts[0],
+            reply_to_message_id=root_id,
+            edit_message_id=root_id,
+            remaining_parts=parts[1:] + [build_summary_update_notice(actor)],
+        )
+        telegram["last_error"] = msg
+        return f"Telegram summary failed: {msg}"
+
+    reply_parts = parts[1:] + [build_summary_update_notice(actor)]
+    if reply_parts:
+        ok, message = _send_reply_parts(
+            telegram,
+            reply_parts,
+            event_id=event_id,
+            root_id=root_id,
+        )
+        if ok:
+            return message
+        return f"Telegram summary failed: {message}"
+
+    telegram["last_submission_id"] = event_id
+    _clear_pending_notice(telegram)
+    telegram["last_error"] = ""
+    telegram["last_sent_at"] = dt_to_storage(now_local())
+    return "Telegram summary updated"
 
 
 def sync_telegram_update(
@@ -414,9 +508,35 @@ def sync_telegram_update(
         telegram["last_error"] = "Telegram is not configured."
         return "Telegram skipped: not configured"
 
-    board_view = build_board_view(board, shift_name, now=datetime.now())
+    board_view = build_board_view(board, shift_name, now=now_local())
     pending = telegram.get("pending_notice") or {}
     if retry_pending and pending.get("text"):
+        if pending.get("kind") == "summary_edit":
+            ok, msg = edit_telegram_text(
+                int(pending.get("edit_message_id", 0) or 0),
+                str(pending.get("text", "")),
+            )
+            if not ok:
+                telegram["last_error"] = msg
+                return f"Telegram pending retry failed: {msg}"
+            remaining_parts = [
+                str(item) for item in pending.get("remaining_parts", []) if str(item).strip()
+            ]
+            if remaining_parts:
+                ok, message = _send_reply_parts(
+                    telegram,
+                    remaining_parts,
+                    event_id=str(pending.get("event_id", "")),
+                    root_id=int(pending.get("reply_to_message_id", 0) or 0),
+                )
+                if ok:
+                    return "Telegram pending update sent"
+                return f"Telegram pending retry failed: {message}"
+            telegram["last_submission_id"] = str(pending.get("event_id", ""))
+            _clear_pending_notice(telegram)
+            telegram["last_error"] = ""
+            telegram["last_sent_at"] = dt_to_storage(now_local())
+            return "Telegram pending update sent"
         pending_parts = [str(pending.get("text", ""))] + [
             str(item) for item in pending.get("remaining_parts", []) if str(item).strip()
         ]
@@ -452,7 +572,7 @@ def sync_telegram_update(
         telegram["last_submission_id"] = event_id
         _clear_pending_notice(telegram)
         telegram["last_error"] = ""
-        telegram["last_sent_at"] = dt_to_storage(datetime.now())
+        telegram["last_sent_at"] = dt_to_storage(now_local())
         return f"Telegram root sent (message_id={message_id})"
 
     if not event:
@@ -473,5 +593,5 @@ def sync_telegram_update(
     telegram["last_submission_id"] = event_id
     _clear_pending_notice(telegram)
     telegram["last_error"] = ""
-    telegram["last_sent_at"] = dt_to_storage(datetime.now())
+    telegram["last_sent_at"] = dt_to_storage(now_local())
     return "Telegram update reply sent"

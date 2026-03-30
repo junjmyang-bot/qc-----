@@ -504,6 +504,95 @@ class SupervisoryBoardTelegramTests(unittest.TestCase):
         self.assertIsNone(first_call.kwargs.get("reply_to_message_id"))
         self.assertEqual(second_call.kwargs.get("reply_to_message_id"), 900)
 
+    def test_send_current_summary_to_telegram_edits_existing_root_and_replies_notice(self):
+        board = empty_board_state()
+        update_active_reports(board, ["a4"], "Supervisor", recorded_at=datetime(2026, 3, 30, 8, 5))
+        board["telegram"] = {
+            "cycle_key": "2026-03-30 (Shift 1 (Pagi))",
+            "root_message_id": 900,
+            "cycle_started_at": "",
+            "last_submission_id": "",
+            "last_sent_at": "",
+            "last_error": "",
+            "pending_notice": {
+                "kind": "",
+                "event_id": "",
+                "text": "",
+                "reply_to_message_id": 0,
+                "edit_message_id": 0,
+                "created_at": "",
+                "remaining_parts": [],
+            },
+        }
+
+        with patch.object(telegram_flow, "telegram_ready", return_value=True), patch.object(
+            telegram_flow,
+            "build_current_summary_parts",
+            return_value=["updated root text"],
+        ), patch.object(
+            telegram_flow,
+            "edit_telegram_text",
+            return_value=(True, "edited"),
+        ) as mocked_edit, patch.object(
+            telegram_flow,
+            "send_telegram_text",
+            return_value=(True, "ok", 901),
+        ) as mocked_send:
+            result = telegram_flow.send_current_summary_to_telegram(
+                board,
+                "2026-03-30 (Shift 1 (Pagi))",
+                SHIFT_NAME,
+                "QC Uyun",
+            )
+
+        self.assertIn("updated", result)
+        mocked_edit.assert_called_once_with(900, "updated root text")
+        self.assertEqual(mocked_send.call_count, 1)
+        self.assertEqual(mocked_send.call_args.kwargs.get("reply_to_message_id"), 900)
+        self.assertIn("ringkasan board sudah diperbarui", mocked_send.call_args.args[0])
+
+    def test_retry_pending_summary_edit_edits_root_then_sends_remaining_replies(self):
+        board = empty_board_state()
+        board["telegram"] = {
+            "cycle_key": "2026-03-30 (Shift 1 (Pagi))",
+            "root_message_id": 900,
+            "cycle_started_at": "",
+            "last_submission_id": "",
+            "last_sent_at": "",
+            "last_error": "network down",
+            "pending_notice": {
+                "kind": "summary_edit",
+                "event_id": "manual-summary:2026-03-30T10:00:00",
+                "text": "updated root text",
+                "reply_to_message_id": 900,
+                "edit_message_id": 900,
+                "created_at": "2026-03-30T10:00:10",
+                "remaining_parts": ["ringkasan board sudah diperbarui"],
+            },
+        }
+
+        with patch.object(telegram_flow, "telegram_ready", return_value=True), patch.object(
+            telegram_flow,
+            "edit_telegram_text",
+            return_value=(True, "edited"),
+        ) as mocked_edit, patch.object(
+            telegram_flow,
+            "send_telegram_text",
+            return_value=(True, "ok", 901),
+        ) as mocked_send:
+            result = telegram_flow.sync_telegram_update(
+                board,
+                "2026-03-30 (Shift 1 (Pagi))",
+                SHIFT_NAME,
+                retry_pending=True,
+            )
+
+        self.assertIn("pending update sent", result)
+        mocked_edit.assert_called_once_with(900, "updated root text")
+        self.assertEqual(mocked_send.call_args.kwargs.get("reply_to_message_id"), 900)
+        self.assertEqual(board["telegram"]["last_submission_id"], "manual-summary:2026-03-30T10:00:00")
+        self.assertEqual(board["telegram"]["pending_notice"]["text"], "")
+
     def test_load_board_state_from_sheet_restores_telegram_state(self):
         today_key = "2026-03-30 (Shift 1 (Pagi))"
         board = empty_board_state()

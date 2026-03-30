@@ -19,6 +19,7 @@ from board_logic import (
     dt_to_storage,
     empty_board_state,
     empty_report_state,
+    now_local,
     normalize_board_state,
     serialize_global_state,
     serialize_report_state,
@@ -264,7 +265,7 @@ def parse_report_state(meta_text: str, comment_text: str, report_id: str, day: d
 
 
 def load_board_state_from_sheet(worksheet: Any, today_key: str, day: date, shift_name: str) -> tuple[dict[str, Any] | None, bool]:
-    if not worksheet:
+    if worksheet is None:
         return None, False
     try:
         all_values = worksheet.get_all_values()
@@ -330,7 +331,7 @@ def load_board_state(worksheet: Any, today_key: str, day: date, shift_name: str)
 
 
 def save_board_state_to_sheet(worksheet: Any, today_key: str, shift_name: str, actor: str, board: dict[str, Any]) -> str:
-    if not worksheet:
+    if worksheet is None:
         return "Saved to local cache only"
 
     all_values = worksheet.get_all_values()
@@ -345,7 +346,7 @@ def save_board_state_to_sheet(worksheet: Any, today_key: str, shift_name: str, a
 
     before = get_column_values(all_values, col_index if col_index > 0 else -1, LAYOUT["total"])
     after = before[:]
-    now = datetime.now()
+    now = now_local()
     board_view = build_board_view(board, shift_name, now=now)
     eval_lookup = {
         item["report_id"]: item
