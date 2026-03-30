@@ -125,6 +125,22 @@ def normalize_service_account_secret(secret_value: Any) -> dict[str, Any] | None
     raise TypeError(f"Unsupported gcp_service_account secret type: {type(secret_value).__name__}")
 
 
+def probe_worksheet_connection() -> tuple[bool, str]:
+    try:
+        info = try_load_service_account()
+        if not info:
+            return False, "No service account info found in secrets or credentials.json"
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds = Credentials.from_service_account_info(info, scopes=scopes)
+        worksheet = gspread.authorize(creds).open_by_url(SHEET_URL).sheet1
+        return True, f"Worksheet connected: {getattr(worksheet, 'title', 'sheet1')}"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+
+
 def try_load_service_account() -> dict[str, Any] | None:
     try:
         secret_value = st.secrets.get("gcp_service_account")

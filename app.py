@@ -24,7 +24,14 @@ from board_logic import (
     update_active_reports,
     update_lineup,
 )
-from board_store import get_last_sheet_error, get_service_account_debug_info, get_worksheet, load_board_state, save_board_state
+from board_store import (
+    get_last_sheet_error,
+    get_service_account_debug_info,
+    get_worksheet,
+    load_board_state,
+    probe_worksheet_connection,
+    save_board_state,
+)
 from telegram_flow import (
     build_current_summary_parts,
     ensure_telegram_cycle,
@@ -544,6 +551,12 @@ def main() -> None:
             f"type: {debug_info['gcp_service_account_type']} | "
             f"local credentials.json: {debug_info['local_credentials_json']}"
         )
+        if debug_info["has_gcp_service_account"] == "Yes":
+            probe_ok, probe_message = probe_worksheet_connection()
+            if probe_ok:
+                st.info(f"Google Sheet probe: {probe_message}")
+            else:
+                st.error(f"Google Sheet probe error: {probe_message}")
     else:
         st.info("Google Sheet connection is active. Actions will save to Google Sheet and local cache.")
 
