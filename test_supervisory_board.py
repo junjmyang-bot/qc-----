@@ -249,6 +249,11 @@ class SupervisoryBoardLogicTests(unittest.TestCase):
 
         self.assertEqual(parsed, datetime(2026, 3, 29, 8, 5))
 
+    def test_flexible_datetime_parser_accepts_month_day_and_time(self):
+        parsed = app.parse_flexible_datetime_text(BASE_DAY.date(), "03-31 15:00")
+
+        self.assertEqual(parsed, datetime(2026, 3, 31, 15, 0))
+
 
 class SupervisoryBoardTelegramTests(unittest.TestCase):
     def test_start_new_telegram_cycle_preserves_board_data_and_only_resets_telegram_thread(self):

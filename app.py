@@ -716,10 +716,15 @@ def main() -> None:
                 st.write("")
                 st.button("NOW", key="now_exception_start", on_click=fill_now_time_field, args=(exc_started_key,), use_container_width=True)
             with exc_row_2[4]:
-                estimated_end_text = st.text_input("Estimasi selesai", key=exc_estimated_key, placeholder="15:00 / 1500")
+                estimated_end_text = st.text_input(
+                    "Estimasi selesai",
+                    key=exc_estimated_key,
+                    placeholder="15:00 / 1500 / 03-31 15:00",
+                )
             with exc_row_2[5]:
                 st.write("")
                 st.button("NOW", key="now_exception_end", on_click=fill_now_time_field, args=(exc_estimated_key,), use_container_width=True)
+            render_helper_text("Estimasi selesai can use time only, or MM-DD HH:MM if the estimate continues into the next date / shift.")
             exc_submit = st.button("Add Exception Instruction", key="add_exception_btn", use_container_width=True)
 
             if exc_submit and instruction_text.strip():
@@ -728,6 +733,11 @@ def main() -> None:
                     st.error("Exception mulai must be entered as HH:MM or HHMM, for example 13:30 or 1330.")
                     return
                 estimated_end_value = parse_flexible_datetime_text(today, estimated_end_text) if estimated_end_text.strip() else None
+                if estimated_end_text.strip() and not estimated_end_value:
+                    st.error(
+                        "Estimasi selesai must be entered as HH:MM, HHMM, or MM-DD HH:MM, for example 15:00, 1500, or 03-31 15:00."
+                    )
+                    return
                 add_exception_instruction(
                     board,
                     instruction_text=instruction_text,
