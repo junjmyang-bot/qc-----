@@ -153,6 +153,8 @@ def ensure_board_loaded(worksheet: Any, today_key: str, day: date, shift_name: s
     st.session_state.loaded_board_key = today_key
     st.session_state.storage_source = source
     st.session_state.persist_message = f"Loaded from {source}"
+    st.session_state["today_setup_selected_reports"] = list(board["setup"]["active_report_ids"])
+    st.session_state["today_setup_general_note"] = str(board.get("general_note", ""))
 
 
 def commit_board_change(
@@ -432,18 +434,17 @@ def render_today_setup_form(
         else:
             render_helper_text("Only today's active reports will be calculated on the board. All others move to OFF TODAY.")
 
-        with st.form("today_setup_form"):
-            selected_reports = st.multiselect(
-                "Active reports for today",
-                options=REPORT_ORDER,
-                default=board["setup"]["active_report_ids"],
-                format_func=report_option_label,
-            )
-            general_note = st.text_area(
-                "General note (optional)",
-                value=board.get("general_note", ""),
-            )
-            setup_clicked = st.form_submit_button("Save Today Setup", use_container_width=True)
+        selected_reports = st.multiselect(
+            "Active reports for today",
+            options=REPORT_ORDER,
+            key="today_setup_selected_reports",
+            format_func=report_option_label,
+        )
+        general_note = st.text_area(
+            "General note (optional)",
+            key="today_setup_general_note",
+        )
+        setup_clicked = st.button("Save Today Setup", key="today_setup_save_btn", use_container_width=True)
 
         active_rows = build_active_report_rows(selected_reports)
         if active_rows:
