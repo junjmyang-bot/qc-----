@@ -142,12 +142,13 @@ def probe_worksheet_connection() -> tuple[bool, str]:
 
 
 def try_load_service_account() -> dict[str, Any] | None:
+    secret_value = None
     try:
         secret_value = st.secrets.get("gcp_service_account")
-        if secret_value:
-            return normalize_service_account_secret(secret_value)
     except Exception:
-        pass
+        secret_value = None
+    if secret_value:
+        return normalize_service_account_secret(secret_value)
 
     if CREDENTIALS_PATH.exists():
         try:
