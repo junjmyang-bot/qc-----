@@ -98,6 +98,23 @@ def get_last_sheet_error() -> str:
     return LAST_SHEET_ERROR
 
 
+def get_service_account_debug_info() -> dict[str, str]:
+    has_secret = False
+    secret_type = "None"
+    try:
+        has_secret = "gcp_service_account" in st.secrets
+        raw = st.secrets.get("gcp_service_account", None)
+        if raw is not None:
+            secret_type = type(raw).__name__
+    except Exception as exc:
+        secret_type = f"secrets-error:{type(exc).__name__}"
+    return {
+        "has_gcp_service_account": "Yes" if has_secret else "No",
+        "gcp_service_account_type": secret_type,
+        "local_credentials_json": "Yes" if CREDENTIALS_PATH.exists() else "No",
+    }
+
+
 def normalize_service_account_secret(secret_value: Any) -> dict[str, Any] | None:
     if not secret_value:
         return None

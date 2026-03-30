@@ -24,7 +24,7 @@ from board_logic import (
     update_active_reports,
     update_lineup,
 )
-from board_store import get_last_sheet_error, get_worksheet, load_board_state, save_board_state
+from board_store import get_last_sheet_error, get_service_account_debug_info, get_worksheet, load_board_state, save_board_state
 from telegram_flow import (
     build_current_summary_parts,
     ensure_telegram_cycle,
@@ -537,6 +537,13 @@ def main() -> None:
         last_sheet_error = get_last_sheet_error()
         if last_sheet_error:
             st.error(f"Google Sheet error: {last_sheet_error}")
+        debug_info = get_service_account_debug_info()
+        st.caption(
+            "Sheet debug | "
+            f"has gcp_service_account: {debug_info['has_gcp_service_account']} | "
+            f"type: {debug_info['gcp_service_account_type']} | "
+            f"local credentials.json: {debug_info['local_credentials_json']}"
+        )
     else:
         st.info("Google Sheet connection is active. Actions will save to Google Sheet and local cache.")
 

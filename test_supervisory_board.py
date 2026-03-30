@@ -640,6 +640,15 @@ class SupervisoryBoardTelegramTests(unittest.TestCase):
 
         self.assertEqual(result, payload)
 
+    def test_get_service_account_debug_info_reports_secret_presence_and_type(self):
+        fake_secrets = {"gcp_service_account": {"type": "service_account"}}
+
+        with patch.object(board_store.st, "secrets", fake_secrets):
+            info = board_store.get_service_account_debug_info()
+
+        self.assertEqual(info["has_gcp_service_account"], "Yes")
+        self.assertEqual(info["gcp_service_account_type"], "dict")
+
     def test_get_worksheet_exposes_last_sheet_error_on_secret_failure(self):
         board_store.get_worksheet.clear()
         try:
