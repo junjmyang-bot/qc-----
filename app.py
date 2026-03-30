@@ -24,7 +24,7 @@ from board_logic import (
     update_active_reports,
     update_lineup,
 )
-from board_store import get_worksheet, load_board_state, save_board_state
+from board_store import get_last_sheet_error, get_worksheet, load_board_state, save_board_state
 from telegram_flow import (
     build_current_summary_parts,
     ensure_telegram_cycle,
@@ -534,6 +534,9 @@ def main() -> None:
     )
     if worksheet is None:
         st.warning("Google Sheet connection is unavailable. Actions will still save to local cache.")
+        last_sheet_error = get_last_sheet_error()
+        if last_sheet_error:
+            st.error(f"Google Sheet error: {last_sheet_error}")
     else:
         st.info("Google Sheet connection is active. Actions will save to Google Sheet and local cache.")
 

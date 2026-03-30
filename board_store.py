@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ CREDENTIALS_PATH = Path(__file__).with_name("credentials.json")
 PROGRESS_30 = ["a4", "a5", "b3", "b4", "b5", "b9"]
 PROGRESS_1H = ["a8", "b2", "b6", "b7", "b8", "b10"]
 ROUTINE_SHIFT = ["a1", "a2", "a3", "a6", "a7", "a9", "b1"]
+LAST_SHEET_ERROR = ""
 
 
 def build_layout() -> dict[str, Any]:
@@ -92,11 +94,25 @@ def get_column_values(matrix: list[list[str]], col_index: int, row_count: int) -
     return [safe_cell(matrix, row - 1, col_index - 1, "") for row in range(1, row_count + 1)]
 
 
+def get_last_sheet_error() -> str:
+    return LAST_SHEET_ERROR
+
+
+def normalize_service_account_secret(secret_value: Any) -> dict[str, Any] | None:
+    if not secret_value:
+        return None
+    if isinstance(secret_value, str):
+        return json.loads(secret_value)
+    if isinstance(secret_value, Mapping):
+        return dict(secret_value)
+    raise TypeError(f"Unsupported gcp_service_account secret type: {type(secret_value).__name__}")
+
+
 def try_load_service_account() -> dict[str, Any] | None:
     try:
         secret_value = st.secrets.get("gcp_service_account")
         if secret_value:
-            return json.loads(secret_value)
+            return normalize_service_account_secret(secret_value)
     except Exception:
         pass
 
@@ -110,8 +126,15 @@ def try_load_service_account() -> dict[str, Any] | None:
 
 @st.cache_resource
 def get_worksheet():
-    info = try_load_service_account()
+    global LAST_SHEET_ERROR
+    LAST_SHEET_ERROR = ""
+    try:
+        info = try_load_service_account()
+    except Exception as exc:
+        LAST_SHEET_ERROR = f"{type(exc).__name__}: {exc}"
+        return None
     if not info:
+        LAST_SHEET_ERROR = "No service account info found in secrets or credentials.json"
         return None
     try:
         scopes = [
@@ -120,7 +143,8 @@ def get_worksheet():
         ]
         creds = Credentials.from_service_account_info(info, scopes=scopes)
         return gspread.authorize(creds).open_by_url(SHEET_URL).sheet1
-    except Exception:
+    except Exception as exc:
+        LAST_SHEET_ERROR = f"{type(exc).__name__}: {exc}"
         return None
 
 

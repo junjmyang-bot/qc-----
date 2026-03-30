@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime
 from unittest.mock import patch
@@ -624,6 +625,31 @@ class SupervisoryBoardTelegramTests(unittest.TestCase):
         self.assertEqual(loaded["telegram"]["root_message_id"], 777)
         self.assertEqual(loaded["telegram"]["last_submission_id"], "sub-1")
         self.assertEqual(loaded["telegram"]["pending_notice"]["event_id"], "sub-2")
+
+    def test_normalize_service_account_secret_accepts_json_string(self):
+        payload = {"type": "service_account", "project_id": "demo"}
+
+        result = board_store.normalize_service_account_secret(json.dumps(payload))
+
+        self.assertEqual(result, payload)
+
+    def test_normalize_service_account_secret_accepts_mapping(self):
+        payload = {"type": "service_account", "project_id": "demo"}
+
+        result = board_store.normalize_service_account_secret(payload)
+
+        self.assertEqual(result, payload)
+
+    def test_get_worksheet_exposes_last_sheet_error_on_secret_failure(self):
+        board_store.get_worksheet.clear()
+        try:
+            with patch.object(board_store, "try_load_service_account", side_effect=ValueError("bad secret")):
+                result = board_store.get_worksheet()
+            self.assertIsNone(result)
+            self.assertIn("ValueError", board_store.get_last_sheet_error())
+            self.assertIn("bad secret", board_store.get_last_sheet_error())
+        finally:
+            board_store.get_worksheet.clear()
 
     def test_finish_exception_instruction_stores_handover_fields(self):
         board = empty_board_state()
