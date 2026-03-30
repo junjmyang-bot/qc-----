@@ -310,6 +310,8 @@ class SupervisoryBoardTelegramTests(unittest.TestCase):
         self.assertIn("👤 QC: QC Uyun", parts[0])
         self.assertIn("• A-4. Laporan QC di Tablet", parts[0])
         self.assertNotIn("B-2", parts[0])
+        self.assertIn("- History today:", parts[0])
+        self.assertIn("08:05 | TL Kupas | stok aman", parts[0])
         self.assertIn("📝 General note", parts[0])
 
     def test_build_current_summary_parts_splits_without_breaking_report_format(self):
@@ -336,8 +338,44 @@ class SupervisoryBoardTelegramTests(unittest.TestCase):
         )
 
         self.assertGreater(len(parts), 1)
-        self.assertLessEqual(len(parts), 3)
         self.assertTrue(parts[0].startswith("(1/"))
+
+    def test_build_current_summary_parts_shows_belum_ada_submission_when_history_empty(self):
+        board = empty_board_state()
+        now = datetime(2026, 3, 30, 8, 5)
+        update_active_reports(board, ["a4"], "Supervisor", recorded_at=now)
+
+        parts = telegram_flow.build_current_summary_parts(
+            board,
+            "2026-03-30 (Shift 1 (Pagi))",
+            SHIFT_NAME,
+            "QC Uyun",
+        )
+
+        self.assertEqual(len(parts), 1)
+        self.assertIn("- History today: belum ada submission", parts[0])
+
+    def test_build_current_summary_parts_includes_full_history_in_chronological_order(self):
+        board = empty_board_state()
+        update_active_reports(board, ["a4"], "Supervisor", recorded_at=datetime(2026, 3, 30, 7, 0))
+        record_submission(board, "a4", "1", "jun", summary="kebersihan OK", recorded_at=datetime(2026, 3, 30, 14, 0), shift_name=SHIFT_NAME)
+        record_submission(board, "a4", "2", "jun", summary="line aman", recorded_at=datetime(2026, 3, 30, 16, 0), shift_name=SHIFT_NAME)
+        record_submission(board, "a4", "3", "jun", summary="test entry", recorded_at=datetime(2026, 3, 30, 18, 0), shift_name=SHIFT_NAME)
+
+        parts = telegram_flow.build_current_summary_parts(
+            board,
+            "2026-03-30 (Shift 1 (Pagi))",
+            SHIFT_NAME,
+            "QC Uyun",
+        )
+
+        self.assertEqual(len(parts), 1)
+        history_1400 = parts[0].find("14:00 | jun | kebersihan OK")
+        history_1600 = parts[0].find("16:00 | jun | line aman")
+        history_1800 = parts[0].find("18:00 | jun | test entry")
+        self.assertGreaterEqual(history_1400, 0)
+        self.assertGreater(history_1600, history_1400)
+        self.assertGreater(history_1800, history_1600)
 
     def test_first_telegram_send_creates_root_message(self):
         board = empty_board_state()

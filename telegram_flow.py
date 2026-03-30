@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from urllib import error as urlerror
 from urllib import parse, request
 
 import streamlit as st
 
-from board_logic import build_board_view, display_dt, dt_to_storage, now_local
+from board_logic import build_board_view, display_dt, dt_from_storage, dt_to_storage, now_local, normalize_board_state
 
 TELEGRAM_MESSAGE_LIMIT = 3200
 
@@ -253,6 +253,31 @@ def latest_report_line(report_eval: dict[str, Any]) -> str:
     return "Belum ada update"
 
 
+def _format_history_line(entry: dict[str, Any]) -> str:
+    submitted_at = dt_from_storage(str(entry.get("submitted_at", "")))
+    time_label = submitted_at.strftime("%H:%M") if submitted_at else "--:--"
+    actor = str(entry.get("submitted_by", "")).strip() or "-"
+    summary = str(entry.get("summary", "")).strip()
+    action_text = str(entry.get("action_text", "")).strip()
+    detail = summary or action_text or "-"
+    return f"  · {time_label} | {actor} | {detail}"
+
+
+def report_history_lines_for_day(
+    normalized_board: dict[str, Any],
+    report_id: str,
+    report_day: date,
+) -> list[str]:
+    entries: list[tuple[datetime, str]] = []
+    for entry in normalized_board["reports"][report_id]["submissions"]:
+        submitted_at = dt_from_storage(str(entry.get("submitted_at", "")))
+        if not submitted_at or submitted_at.date() != report_day:
+            continue
+        entries.append((submitted_at, _format_history_line(entry)))
+    entries.sort(key=lambda item: item[0])
+    return [line for _, line in entries]
+
+
 def build_current_summary_parts(
     board: dict[str, Any],
     today_key: str,
@@ -261,11 +286,19 @@ def build_current_summary_parts(
     *,
     max_chars: int = TELEGRAM_MESSAGE_LIMIT,
 ) -> list[str]:
-    board_view = build_board_view(board, shift_name, now=now_local())
+    normalized_board = normalize_board_state(board)
+    board_view = build_board_view(normalized_board, shift_name, now=now_local())
     date_label = today_key.split(" (", 1)[0]
+    report_day = datetime.strptime(date_label, "%Y-%m-%d").date()
     active_reports = board_view["active_reports"]
     report_blocks: list[str] = []
     for item in active_reports:
+        history_lines = report_history_lines_for_day(normalized_board, item["report_id"], report_day)
+        history_block = ["- History today:"]
+        if history_lines:
+            history_block.extend(history_lines)
+        else:
+            history_block[0] = "- History today: belum ada submission"
         report_blocks.append(
             "\n".join(
                 [
@@ -273,6 +306,7 @@ def build_current_summary_parts(
                     f"- Status: {item['status'] or 'Belum mulai'}",
                     f"- Latest: {latest_report_line(item)}",
                     f"- Updated: {display_dt(item['status_updated_at']) if item['status_updated_at'] else '-'} by {item['submitted_by'] or '-'}",
+                    *history_block,
                 ]
             )
         )
@@ -317,18 +351,13 @@ def build_current_summary_parts(
     current_part = ""
     for block in sections:
         candidate = block if not current_part else f"{current_part}\n\n{block}"
-        if current_part and len(candidate) > max_chars and len(parts) < 2:
+        if current_part and len(candidate) > max_chars:
             parts.append(current_part)
             current_part = block
         else:
             current_part = candidate
     if current_part:
         parts.append(current_part)
-
-    if len(parts) > 3:
-        merged = parts[:2]
-        merged.append("\n\n".join(parts[2:]))
-        parts = merged
 
     if len(parts) > 1:
         total = len(parts)
